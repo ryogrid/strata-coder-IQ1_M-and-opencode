@@ -15,7 +15,7 @@ Progress tracker. One commit per completed task. Check off as done.
 
 - [x] 1. Init git repo + write design/ docs + TODO.md, commit
 - [x] 2. Cargo scaffold + deps (curses, termios)
-- [ ] 3. Terminal I/O layer (raw input via termios, screen via curses)
+- [x] 3. Terminal I/O layer (raw input via termios, screen via curses)
 - [ ] 4. Gap-buffer Buffer type (point/mark, UTF-8 chars)
 - [ ] 5. Cursor movement (Ctrl-b/f, Ctrl-n/p, Ctrl-a)
 - [ ] 6. Keymap dispatch tree + self-insert + Ctrl-q
