@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "strata": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Strata (local)",
+      "options": {
+        "baseURL": "http://192.168.56.1:8080/v1",
+        "apiKey": "local"
+      },
+      "models": {
+        "qwen3.8-flash-next-coder": {
+          "name": "Qwen3.8-Flash-Next Coder (Strata)",
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          }
+        }
+      }
+    }
+  }
+}
