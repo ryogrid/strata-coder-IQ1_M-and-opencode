@@ -1,0 +1,8 @@
+[package]
+name = "emur"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+curses = "0.1.0"
+termios = "0.3.3"
