@@ -176,3 +176,10 @@ touched by the harness.
   showed a wiped/partially repainted screen (scrolling appeared broken,
   prompts invisible) and the last unflushed frame was lost on exit.
   Every frame and every local-echo step now ends with an explicit flush.
+- Reported on Windows Terminal (fixed in `src/screen.rs`): each line lost
+  its first character, which rode at the end of the row above. The curses
+  crate's `refresh()`/`canvas_text` emit 0-based home codes (`ESC[0;0H`)
+  and `ESC[0m` resets around moves, which the ConPTY layer misprocesses.
+  Rendering is now hand-rolled ANSI only: 1-based `ESC[<row>;<col>H`
+  before every cell, `ESC[2J` + `ESC[1;1H` to clear, and one flush per
+  cell so the move and its text always arrive as a single atomic write.

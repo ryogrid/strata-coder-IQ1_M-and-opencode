@@ -5,10 +5,15 @@
 // size is unknown (not a tty) or curses is not available.
 use super::buffer::Buffer;
 use super::window::Tree;
-use curses::refresh;
 use curses::canvas::get_size;
-use curses::canvas::text as canvas_text;
-use curses::ansi::move_to;
+
+// Hand-rolled ANSI only: the curses crate emits 0-based home sequences
+// (ESC[0;0H) and attribute resets that ConPTY-based terminals (Windows
+// Terminal) misprocess, which shifts each line by one char. Manual moves
+// are always 1-based ESC[<row>;<col>H and every cell is flushed atomically.
+pub fn screen_clear() {
+    print!("\x1b[2J\x1b[1;1H");
+}
 
 pub fn split_lines(text: String) -> Vec<String> {
     let mut lines: Vec<String> = vec![];
@@ -53,7 +58,8 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         rows = 24; // not a tty (pipe/redirect): fall back to a fixed screen
         cols = 80;
     }
-    refresh();
+    screen_clear();
+    super::terminal::flush_stdout();
 
     let height = if rows > 1 { rows - 1 } else { 1 };
     let frames = tree.layout(tree.root, 1, height, 0, cols);
@@ -83,7 +89,7 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     } else {
         format!("Buf {}", abuf.name).to_string()
     };
-    draw_cell(0, 0, status, cols, tty);
+    draw_cell(0, 0, status, cols);
 
     let mut crow = 1;
     let mut ccol = 0;
@@ -97,9 +103,9 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         while r < frames[i].height {
             let li = tree.leaves[leaf_idx].scroll + r;
             if li < lines.len() {
-                draw_cell(frames[i].top + r, frames[i].col, lines[li].clone(), frames[i].width, tty);
+                draw_cell(frames[i].top + r, frames[i].col, lines[li].clone(), frames[i].width);
             } else {
-                draw_cell(frames[i].top + r, frames[i].col, "@".to_string(), frames[i].width, tty);
+                draw_cell(frames[i].top + r, frames[i].col, "@".to_string(), frames[i].width);
             }
             r += 1;
         }
@@ -117,17 +123,14 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     }
 
     if have_cursor {
-        if tty {
-            move_to(ccol as u8 + 1, crow as u8 + 1);
-        } else {
-            print!("\x1b[{};{}H", crow + 1, ccol + 1);
-        }
+        print!("\x1b[{};{}H", crow + 1, ccol + 1);
+        super::terminal::flush_stdout();
     }
     super::terminal::flush_stdout();
     tree
 }
 
-fn draw_cell(row: usize, col: usize, line: String, width: usize, tty: bool) {
+fn draw_cell(row: usize, col: usize, line: String, width: usize) {
     let mut chars: Vec<char> = vec![];
     for c in line.chars() {
         if chars.len() >= width {
@@ -142,11 +145,7 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, tty: bool) {
         chars.push(' ');
     }
     let padded = chars.iter().collect::<String>();
-    if tty {
-        // canvas::text(x=col, y=row) emits ESC[y;xH (1-based): col=1, y=row+1.
-        canvas_text(col as u8 as i8 + 1, row as u8 as i8 + 1, &padded, vec![]);
-    } else {
-        print!("\x1b[{};{}H", row + 1, col + 1);
-        print!("{}", padded);
-    }
+    print!("\x1b[{};{}H", row + 1, col + 1);
+    print!("{}", padded);
+    super::terminal::flush_stdout();
 }
