@@ -6,6 +6,9 @@
 // size is unknown (not a tty) or curses is not available.
 use super::buffer::Buffer;
 use super::window::Tree;
+use super::highlight::styles;
+use super::highlight::detect;
+use super::highlight::hchars_of;
 use curses::canvas::get_size;
 
 // Hand-rolled ANSI only: the curses crate emits 0-based home sequences
@@ -29,6 +32,20 @@ pub fn split_lines(text: String) -> Vec<String> {
     }
     lines.push(current.iter().collect::<String>());
     lines
+}
+
+pub fn line_offsets(lines: Vec<String>) -> Vec<usize> {
+    let mut offs: Vec<usize> = vec![];
+    let mut acc = 0;
+    for l in lines {
+        offs.push(acc);
+        let mut k = 0;
+        for _c in l.chars() {
+            k += 1;
+        }
+        acc += k + 1;
+    }
+    offs
 }
 
 pub fn point_pos(text: String, point: usize) -> Vec<usize> {
@@ -95,13 +112,27 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         let leaf_idx = frames[i].leaf;
         let buf = &bufs[tree.leaves[leaf_idx].buffer];
         let lines = split_lines(buf.text());
+        let lang = detect(buf.name.clone());
+        let toks = styles(buf.text(), lang);
+        let offs = line_offsets(lines.clone());
         let mut r = 0;
         while r < frames[i].height {
             let li = tree.leaves[leaf_idx].scroll + r;
             if li < lines.len() {
-                draw_cell(frames[i].top + r, frames[i].col, lines[li].clone(), frames[i].width);
+                let off = offs[li];
+                let mut line_styles: Vec<usize> = vec![];
+                let mut k = 0;
+                while k < lines[li].len() {
+                    if off + k < toks.len() {
+                        line_styles.push(toks[off + k]);
+                    } else {
+                        line_styles.push(0);
+                    }
+                    k += 1;
+                }
+                draw_cell(frames[i].top + r, frames[i].col, lines[li].clone(), frames[i].width, line_styles);
             } else {
-                draw_cell(frames[i].top + r, frames[i].col, "@".to_string(), frames[i].width);
+                draw_cell(frames[i].top + r, frames[i].col, "@".to_string(), frames[i].width, vec![]);
             }
             r += 1;
         }
@@ -130,7 +161,7 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         format!("Buf {}", abuf.name).to_string()
     };
     let status = format!("{} {}/{} ({}%)", label, st_line, st_total, st_pct);
-    draw_cell(rows - 1, 0, status, cols);
+    draw_cell(rows - 1, 0, status, cols, vec![]);
 
     if have_cursor {
         if rows > 1 && crow > rows - 2 {
@@ -143,9 +174,31 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     tree
 }
 
-fn draw_cell(row: usize, col: usize, line: String, width: usize) {
+pub fn style_esc(s: usize) -> String {
+    if s == 1 {
+        return "\x1b[36m".to_string();
+    }
+    if s == 2 {
+        return "\x1b[35m".to_string();
+    }
+    if s == 3 {
+        return "\x1b[32m".to_string();
+    }
+    if s == 4 {
+        return "\x1b[34m".to_string();
+    }
+    if s == 5 {
+        return "\x1b[1;36m".to_string();
+    }
+    "\x1b[0m".to_string()
+}
+
+fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usize>) {
     let mut chars: Vec<char> = vec![];
-    for c in line.chars() {
+    let mut stys: Vec<usize> = vec![];
+    let src: Vec<char> = line.chars().collect();
+    let mut idx = 0;
+    for c in src {
         if chars.len() >= width {
             break;
         }
@@ -153,11 +206,38 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize) {
         // CR over a padded cell wipes the line (CRLF files looked blank).
         let d = if c < ' ' { ' ' } else { c };
         chars.push(d);
+        stys.push(if idx < styles.len() { styles[idx] } else { 0 });
+        idx += 1;
     }
     while chars.len() < width {
         chars.push(' ');
+        stys.push(0);
     }
-    let padded = chars.iter().collect::<String>();
+    // Build the line with SGR escapes injected on style changes; escapes are
+    // zero-width so padding/width maths above stays correct.
+    let mut out: Vec<char> = vec![];
+    for cc in hchars_of("\x1b[0m".to_string()) {
+        out.push(cc);
+    }
+    let mut cur = 0;
+    let mut j = 0;
+    while j < chars.len() {
+        let s = stys[j];
+        if s != cur {
+            for cc in hchars_of(style_esc(s)) {
+                out.push(cc);
+            }
+            cur = s;
+        }
+        out.push(chars[j]);
+        j += 1;
+    }
+    if cur != 0 {
+        for cc in hchars_of("\x1b[0m".to_string()) {
+            out.push(cc);
+        }
+    }
+    let padded = out.iter().collect::<String>();
     print!("\x1b[{};{}H", row + 1, col + 1);
     print!("{}", padded);
     super::terminal::flush_stdout();

@@ -155,6 +155,19 @@ These target the three failure modes reported on real WSL2 ttys.
 | s82 | C-x b `aa` Enter; C-x b `ab` Enter; C-x b `a` Tab | ambiguous completion echoes the candidate list `aa ab`; typing `b` Enter then switches: status `Buf ab 1/1 (0%)` |
 | s83 | C-x C-f `/tmp/emur-e2e-fcomp` Tab Enter | Tab completes the unique path; split window shows file content; status `Buf /tmp/emur-e2e-fcomp.txt 1/3 (0%)` |
 
+## Syntax-highlighting scenarios
+
+Color assertions use `capture-pane -pe` (`cap_e`) + `expect_e`/`expect_absent_e`
+grepping raw SGR sequences (`ESC[<n>m`); `cap` (plain capture) is unchanged.
+
+| ID   | Setup                                        | Expected observation |
+|------|----------------------------------------------|----------------------|
+| s90 | open `/tmp/emur-e2e-h.rs` (`fn main`, `let x = 42;`, `// note`) | keywords cyan `ESC[36m`, number blue `ESC[34m`, comment green `ESC[32m` |
+| s91 | open `/tmp/emur-e2e-h.py` (`def greet`, `msg = "hi"  # note`) | `def` keyword cyan, string magenta `ESC[35m`, `#` comment green |
+| s92 | open `/tmp/emur-e2e-h.json` (`{"n": 42, "ok": true}`) | strings magenta, number blue, `true` keyword cyan |
+| s93 | open `/tmp/emur-e2e-h.md` (`# Heading`, `` `code` ``) | bold `ESC[1m` + cyan on the heading, inline-code span magenta |
+| s94 | open `/tmp/emur-e2e-h.txt` (`plain text 42`) | text renders with NO color codes beyond per-line resets (`ESC[3[2456]m` absent) |
+
 ## Running
 
 ```
@@ -228,3 +241,8 @@ touched by the harness.
   `src/main.rs` keeps a `killed` accumulator — consecutive `C-k`
   commands concatenate (Emacs-style, newline included), any other
   command ends the accumulation run — and `C-y` re-inserts it at point.
+- Color assertions (s90-s94) need `capture-pane -pe`; plain `-p` strips SGR
+  codes. tmux's `-e` normalizes combined SGRs: our `ESC[1;36m` heading code
+  is captured as `ESC[1m` + `ESC[36m`, so s93 greps both separately.
+  `expect_e '\[36m'` prefixes a literal ESC (`$'\033'`) and the escaped
+  bracket keeps `[36m` literal for grep -E (an unescaped `[` starts a class).

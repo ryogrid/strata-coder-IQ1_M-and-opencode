@@ -8,7 +8,7 @@ Repo layout:
 
 | Path | Contents |
 |------|----------|
-| `src/` | `main.rs` (key dispatch), `buffer.rs` (gap buffer), `window.rs` (window tree), `screen.rs` (rendering), `terminal.rs` (raw I/O) |
+| `src/` | `main.rs` (key dispatch), `buffer.rs` (gap buffer), `window.rs` (window tree), `screen.rs` (rendering), `terminal.rs` (raw I/O), `highlight.rs` (syntax highlighting) |
 | `design/` | design docs + task tracker |
 | `test-design/` | end-to-end test design doc + tmux-driven harness |
 
@@ -58,7 +58,13 @@ line, percent of buffer length); a trailing `*` before the position marks
 the buffer as modified; when a transient message exists (e.g. `Wrote file`,
 `Cancelled`, `Search string not found: q`) it replaces the status line for
 one frame. All commands are Emacs-style control keys: `C-x` is Ctrl-x, `M-x`
-is Meta/Esc followed by the key.
+is Meta/Esc followed by the key. Buffer text is syntax-highlighted by the
+language detected from the buffer/file-name extension: keywords cyan, strings
+magenta, comments green, numbers blue, markdown headings / HTML tags bold
+cyan. Supported extensions: `rs c cpp h js ts go css` (C-family: `//` and
+`/* */` comments), `py sh rb yaml toml` (`#` comments, Python `"""..."""`),
+`json`, `md`/`markdown`, `html`/`xml` (`<!-- -->`); anything else (e.g. `txt`,
+`*demo*`) stays plain.
 
 | Key | Command |
 |-----|---------|

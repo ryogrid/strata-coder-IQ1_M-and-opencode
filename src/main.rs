@@ -2,6 +2,7 @@ mod terminal;
 mod buffer;
 mod screen;
 mod window;
+mod highlight;
 
 fn read_file(path: String) -> String {
     match std::fs::read_to_string(path) {

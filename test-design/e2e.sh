@@ -506,13 +506,70 @@ t_s83() {  # Tab in the Find-file minibuffer completes a unique path (split wind
   report s83 "$ok"
 }
 
+cap_e() { tmux capture-pane -pe -t "$SESSION" 2>/dev/null; }
+expect_e() { cap_e | grep -qE -- $'\033'"$1"; }
+expect_absent_e() { ! cap_e | grep -qE -- $'\033'"$1"; }
+
+t_s90() {  # rust: keywords cyan, numbers blue, // comments green
+  printf 'fn main() {\n    let x = 42;\n    // note\n}\n' > /tmp/emur-e2e-h.rs
+  start_session s90 /tmp/emur-e2e-h.rs
+  local ok=1
+  expect 'fn main' || ok=0
+  expect_e '\[36m' || ok=0
+  expect_e '\[34m' || ok=0
+  expect_e '\[32m' || ok=0
+  report s90 "$ok"
+}
+
+t_s91() {  # python: # comment green, string magenta, def keyword cyan
+  printf 'def greet():\n    msg = "hi"  # note\n' > /tmp/emur-e2e-h.py
+  start_session s91 /tmp/emur-e2e-h.py
+  local ok=1
+  expect 'def greet' || ok=0
+  expect_e '\[36m' || ok=0
+  expect_e '\[35m' || ok=0
+  expect_e '\[32m' || ok=0
+  report s91 "$ok"
+}
+
+t_s92() {  # json: strings magenta, numbers blue, true cyan
+  printf '{"n": 42, "ok": true}\n' > /tmp/emur-e2e-h.json
+  start_session s92 /tmp/emur-e2e-h.json
+  local ok=1
+  expect '"n": 42' || ok=0
+  expect_e '\[35m' || ok=0
+  expect_e '\[34m' || ok=0
+  expect_e '\[36m' || ok=0
+  report s92 "$ok"
+}
+
+t_s93() {  # markdown: heading bold-cyan, `code` magenta
+  printf '# Heading\ntext `code` here\n' > /tmp/emur-e2e-h.md
+  start_session s93 /tmp/emur-e2e-h.md
+  local ok=1
+  expect '# Heading' || ok=0
+  expect_e '\[1m' || ok=0
+  expect_e '\[36m' || ok=0
+  expect_e '\[35m' || ok=0
+  report s93 "$ok"
+}
+
+t_s94() {  # plain text (.txt): no color codes beyond per-line resets
+  printf 'plain text 42\n' > /tmp/emur-e2e-h.txt
+  start_session s94 /tmp/emur-e2e-h.txt
+  local ok=1
+  expect 'plain text' || ok=0
+  expect_absent_e '\[3[2456]m' || ok=0
+  report s94 "$ok"
+}
+
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94; do
   "$t"
 done
 
-rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt
+rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"

@@ -71,3 +71,12 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 |-----|---------|
 | `C-s` | `search-forward` (read query in echo line) |
 | `C-r` | `search-backward` |
+
+## Display
+
+- Syntax highlighting (automatic, no key): buffer language detected from the
+  name/file extension — `rs c cpp h js ts go css`, `py sh rb yaml toml`,
+  `json`, `md markdown`, `html xml`, else plain. Styles: keywords cyan,
+  strings magenta, comments green, numbers blue, markdown headings and
+  HTML tags bold cyan. Comments and multi-line strings use the buffer text,
+  not just the visible line.
