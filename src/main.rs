@@ -110,6 +110,34 @@ fn main() {
                 bufs[bi].modified = false;
                 msg = format!("Killed buffer {}", name);
             }
+        } else if b == 0x13 { // Ctrl-s: forward search
+            let q = terminal::read_line("Find: ".to_string());
+            if q.len() > 0 {
+                let hit = bufs[bi].find_forward(&q, bufs[bi].point);
+                if hit.len() > 0 {
+                    bufs[bi].point = hit[0];
+                    msg = "".to_string();
+                } else {
+                    msg = format!("Search string not found: {}", q);
+                }
+            } else {
+                msg = "Cancelled".to_string();
+            }
+        } else if b == 0x12 { // Ctrl-r: reverse search
+            let q = terminal::read_line("Reverse find: ".to_string());
+            if q.len() > 0 {
+                let hit = bufs[bi].find_backward(&q, bufs[bi].point);
+                if hit.len() > 0 {
+                    bufs[bi].point = hit[0];
+                    msg = "".to_string();
+                } else {
+                    msg = format!("Search string not found: {}", q);
+                }
+            } else {
+                msg = "Cancelled".to_string();
+            }
+        } else if b == 0x07 { // Ctrl-g: cancel
+            msg = "Cancelled".to_string();
         } else if b == 0x1b {
             let n = terminal::read_byte(); // Meta prefix
             if n == 0x62 {

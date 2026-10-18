@@ -250,6 +250,72 @@ impl Buffer {
         }
     }
 
+    pub fn find_forward(self: &Buffer, pat: &String, from: usize) -> Vec<usize> {
+        let mut tchars: Vec<char> = vec![];
+        for c in self.text().chars() {
+            tchars.push(c);
+        }
+        let mut pchars: Vec<char> = vec![];
+        for c in pat.chars() {
+            pchars.push(c);
+        }
+        if pchars.len() == 0 || from + pchars.len() > tchars.len() {
+            return vec![];
+        }
+        let mut i = from;
+        while i + pchars.len() <= tchars.len() {
+            let mut ok = true;
+            let mut k = 0;
+            while k < pchars.len() {
+                if tchars[i + k] != pchars[k] {
+                    ok = false;
+                }
+                k += 1;
+            }
+            if ok {
+                return vec![i + pchars.len()];
+            }
+            i += 1;
+        }
+        vec![]
+    }
+
+    pub fn find_backward(self: &Buffer, pat: &String, from: usize) -> Vec<usize> {
+        let mut tchars: Vec<char> = vec![];
+        for c in self.text().chars() {
+            tchars.push(c);
+        }
+        let mut pchars: Vec<char> = vec![];
+        for c in pat.chars() {
+            pchars.push(c);
+        }
+        if pchars.len() == 0 || pchars.len() > tchars.len() || from == 0 {
+            return vec![];
+        }
+        let mut i = from - 1;
+        if i > tchars.len() - pchars.len() {
+            i = tchars.len() - pchars.len();
+        }
+        while true {
+            let mut ok = true;
+            let mut k = 0;
+            while k < pchars.len() {
+                if tchars[i + k] != pchars[k] {
+                    ok = false;
+                }
+                k += 1;
+            }
+            if ok {
+                return vec![i];
+            }
+            if i == 0 {
+                break;
+            }
+            i -= 1;
+        }
+        vec![]
+    }
+
     pub fn text(self: &Buffer) -> String {
         let mut out: Vec<char> = vec![];
         out.extend(self.chars[0..self.gap_start].iter());
