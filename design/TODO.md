@@ -26,4 +26,4 @@ Progress tracker. One commit per completed task. Check off as done.
 - [x] 10. Window splitting (Ctrl-x 2/3) + Ctrl-x o
 - [x] 11. Ctrl-x 1 delete-other-windows
 - [x] 12. Search (Ctrl-s/r) + Ctrl-g cancel + quit (Ctrl-x Ctrl-c)
-- [ ] 13. Build + smoke test + final commit
+- [x] 13. Build + smoke test + final commit
