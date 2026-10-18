@@ -28,8 +28,15 @@ fn main() {
             buf.forward_char(); // Ctrl-f
         } else if b == 0x0e {
             buf.next_line(); // Ctrl-n
-        } else if b == 0x10 {
+        } else         if b == 0x10 {
             buf.previous_line(); // Ctrl-p
+        } else if b == 0x11 {
+            let n = terminal::read_byte(); // Ctrl-q: quote next key
+            buf.insert_char(terminal::read_char_from(n));
+        } else if b >= 0x20 && b < 0x7f {
+            buf.insert_char(terminal::read_char_from(b)); // self-insert (ASCII)
+        } else if b >= 0x80 {
+            buf.insert_char(terminal::read_char_from(b)); // self-insert (UTF-8)
         }
     }
 }
