@@ -11,7 +11,7 @@ pub fn enter_raw_mode() {
             let mut t = t;
             t.c_lflag &= !(ICANON | ECHO | ECHOE | ECHOK | ECHONL | ISIG | IEXTEN);
             t.c_oflag &= !OPOST;
-            t.c_iflag &= !(INLCR | IGNCR | ICRNL | IGNBRK);
+            t.c_iflag &= !(INLCR | IGNCR | ICRNL | IGNBRK | IXON | IXOFF);
             tcsetattr(fd, TCSANOW, &t);
         }
         Err(_) => {}, // not a tty (pipe/redirect): nothing to configure

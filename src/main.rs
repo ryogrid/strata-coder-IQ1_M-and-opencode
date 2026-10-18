@@ -88,6 +88,7 @@ fn main() {
             } else if n == 0x17 { // Ctrl-x Ctrl-w: write-file
                 let path = terminal::read_line("Write file: ".to_string());
                 if path.len() > 0 {
+                    bufs[bi].filename = Some(path.clone());
                     if write_file(path.to_string(), bufs[bi].text()) {
                         bufs[bi].modified = false;
                         msg = format!("Wrote {}", path);
