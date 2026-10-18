@@ -12,6 +12,10 @@ pub struct Buffer {
     pub mark: usize,
 }
 
+pub fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
 impl Buffer {
     pub fn new(name: String, text: String) -> Buffer {
         let chars = text.chars().collect::<Vec<char>>();
@@ -54,7 +58,7 @@ impl Buffer {
         while self.gap_start > target {
             self.gap_start -= 1;
             self.gap_end -= 1;
-            self.chars[self.gap_end - 1] = self.chars[self.gap_start];
+            self.chars[self.gap_end] = self.chars[self.gap_start];
         }
         while self.gap_end < target {
             self.chars[self.gap_start] = self.chars[self.gap_end];
@@ -165,6 +169,87 @@ impl Buffer {
         }
     }
 
+    pub fn beginning_of_buffer(self: &mut Buffer) {
+        self.point = 0;
+    }
+
+    pub fn end_of_buffer(self: &mut Buffer) {
+        self.point = self.len();
+    }
+
+    pub fn insert_newline_after(self: &mut Buffer) {
+        self.move_gap(self.point);
+        if self.gap_start < self.gap_end {
+            self.chars[self.gap_start] = '\n';
+            self.gap_start += 1;
+        } else {
+            self.chars.insert(self.gap_start, '\n');
+            self.gap_end += 1;
+        }
+        self.mark = self.point;
+        self.modified = true;
+    }
+
+    pub fn swap_at(self: &mut Buffer, i: usize) {
+        let a = self.to_index(i);
+        let b = self.to_index(i + 1);
+        let tmp = self.chars[a];
+        self.chars[a] = self.chars[b];
+        self.chars[b] = tmp;
+        self.modified = true;
+    }
+
+    pub fn transpose_chars(self: &mut Buffer) {
+        if self.point > 0 {
+            if self.point < self.len() {
+                self.swap_at(self.point - 1);
+                self.point += 1;
+            } else if self.len() > 1 {
+                self.swap_at(self.len() - 2);
+            }
+        } else if self.len() > 1 {
+            self.swap_at(0);
+            self.point = 1;
+        }
+    }
+
+    pub fn kill_to_end_of_line(self: &mut Buffer) {
+        if self.point < self.len() && self.char_at(self.point) == '\n' {
+            self.delete_forward();
+        } else {
+            let n = self.line_end(self.point) - self.point;
+            let mut i = 0;
+            while i < n {
+                self.delete_forward();
+                i += 1;
+            }
+        }
+    }
+
+    pub fn forward_word(self: &mut Buffer) {
+        while self.point < self.len() && !is_word_char(self.char_at(self.point)) {
+            self.point += 1;
+        }
+        while self.point < self.len() && is_word_char(self.char_at(self.point)) {
+            self.point += 1;
+        }
+    }
+
+    pub fn backward_word(self: &mut Buffer) {
+        if self.point > 0 && is_word_char(self.char_at(self.point - 1)) {
+            while self.point > 0 && is_word_char(self.char_at(self.point - 1)) {
+                self.point -= 1;
+            }
+        } else {
+            while self.point > 0 && !is_word_char(self.char_at(self.point - 1)) {
+                self.point -= 1;
+            }
+            while self.point > 0 && is_word_char(self.char_at(self.point - 1)) {
+                self.point -= 1;
+            }
+        }
+    }
+
     pub fn text(self: &Buffer) -> String {
         let mut out: Vec<char> = vec![];
         out.extend(self.chars[0..self.gap_start].iter());
@@ -205,5 +290,33 @@ fn cursor_movement() {
     assert!(b.point == 7);
     b.forward_char();
     assert!(b.point == 8);
+}
+#[test]
+fn editing_and_navigation() {
+    let mut b = Buffer::new("t".to_string(), "hello big world".to_string());
+    b.point = 2;
+    b.forward_word();
+    assert!(b.point == 5);
+    b.forward_word();
+    assert!(b.point == 9);
+    b.backward_word();
+    assert!(b.point == 6);
+    b.point = 11;
+    b.forward_word();
+    assert!(b.point == 15);
+    b.end_of_buffer();
+    assert!(b.point == 15);
+    b.backward_word();
+    assert!(b.point == 10);
+    b.kill_to_end_of_line();
+    assert!(b.text() == "hello big ");
+    b.point = 10;
+    b.transpose_chars();
+    assert!(b.text() == "hello bi g");
+    b.point = 5;
+    b.insert_newline_after();
+    assert!(b.text() == "hello\n bi g");
+    b.beginning_of_buffer();
+    assert!(b.point == 0);
 }
 }

@@ -10,6 +10,7 @@ Progress tracker. One commit per completed task. Check off as done.
 - Windows are a binary split tree; `C-x o` cycles leaves in tree order.
 - Keep `point`/`mark` per-window, not global.
 - `C-x` prefix and `M-`/`Esc` prefix need multi-key dispatch.
+- Raw ttys cannot send `C-<`/`C->`; bound them as `M-<`/`M->` (Meta form).
 
 ## Tasks
 
@@ -20,7 +21,7 @@ Progress tracker. One commit per completed task. Check off as done.
 - [x] 5. Cursor movement (Ctrl-b/f, Ctrl-n/p, Ctrl-a)
 - [x] 6. Keymap dispatch tree + self-insert + Ctrl-q
 - [x] 7. File load/save (Ctrl-x Ctrl-f/s/w/i, Ctrl-x k)
-- [ ] 8. Line/word nav + delete/insert/kill (Ctrl-d, backspace, Ctrl-o, Ctrl-t, Ctrl-k, Meta-b/f)
+- [x] 8. Line/word nav + delete/insert/kill (Ctrl-d, backspace, Ctrl-o, Ctrl-t, Ctrl-k, Meta-b/f)
 - [ ] 9. Single-window render + status line + echo
 - [ ] 10. Window splitting (Ctrl-x 2/3) + Ctrl-x o
 - [ ] 11. Ctrl-x 1 delete-other-windows

@@ -80,7 +80,16 @@ fn main() {
             continue;
         }
         if b == 0x1b {
-            terminal::read_byte();
+            let n = terminal::read_byte(); // Meta prefix
+            if n == 0x62 {
+                buf.backward_word();
+            } else if n == 0x66 {
+                buf.forward_word();
+            } else if n == 0x3c {
+                buf.beginning_of_buffer(); // C-</C-> arrive as Meta form over raw ttys
+            } else if n == 0x3e {
+                buf.end_of_buffer();
+            }
             continue; // Meta prefix binds later
         }
         if b == 0x01 {
@@ -93,6 +102,18 @@ fn main() {
             buf.next_line(); // Ctrl-n
         } else         if b == 0x10 {
             buf.previous_line(); // Ctrl-p
+        } else if b == 0x7f {
+            buf.delete_backward(); // backspace (DEL)
+        } else if b == 0x04 {
+            buf.delete_forward(); // Ctrl-d
+        } else if b == 0x0f {
+            buf.insert_newline_after(); // Ctrl-o
+        } else if b == 0x14 {
+            buf.transpose_chars(); // Ctrl-t
+        } else if b == 0x0b {
+            buf.kill_to_end_of_line(); // Ctrl-k
+        } else if b == 0x05 {
+            buf.end_of_line(); // Ctrl-e
         } else if b == 0x11 {
             let n = terminal::read_byte(); // Ctrl-q: quote next key
             buf.insert_char(terminal::read_char_from(n));
