@@ -74,6 +74,7 @@ Meta/Esc followed by the key.
 | `C-o` | insert newline after point |
 | `C-t` | transpose chars around point |
 | `C-k` | kill to end of line |
+| `C-y` | paste killed text at point (consecutive `C-k`s accumulate, including the newline) |
 | `C-q` | quote: insert next key literally |
 | `C-x C-f` | load file (prompt in status line, end with Enter) |
 | `C-x C-s` | save buffer to its file |

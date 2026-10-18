@@ -30,6 +30,8 @@ fn main() {
     let mut tree = window::new_tree(0);
     let mut active = 0;
     let mut msg = "".to_string();
+    let mut killed = "".to_string();
+    let mut prev_cmd = 0;
     loop {
         tree = screen::draw_all(&bufs, tree, active, msg.to_string());
         let bi = tree.leaves[active].buffer;
@@ -186,8 +188,18 @@ fn main() {
             bufs[bi].insert_newline_after(); // Ctrl-o
         } else if b == 0x14 {
             bufs[bi].transpose_chars(); // Ctrl-t
-        } else if b == 0x0b {
-            bufs[bi].kill_to_end_of_line(); // Ctrl-k
+        } else if b == 0x0b { // Ctrl-k: kill to end of line, feeds Ctrl-y
+            let cut = bufs[bi].kill_to_end_of_line();
+            if prev_cmd == 0x0b {
+                killed = killed.to_string() + &cut; // consecutive kills accumulate
+            } else {
+                killed = cut;
+            }
+            prev_cmd = 0x0b;
+        } else if b == 0x19 { // Ctrl-y: paste the killed text at point
+            for c in killed.chars() {
+                bufs[bi].insert_char(c);
+            }
         } else if b == 0x05 {
             bufs[bi].end_of_line(); // Ctrl-e
         } else if b == 0x11 {
@@ -204,6 +216,7 @@ fn main() {
             tree.leaves[active].point = bufs[bi].point;
             tree.leaves[active].mark = bufs[bi].mark;
         }
+        prev_cmd = b;
     }
     terminal::restore_mode(saved_tty);
 }

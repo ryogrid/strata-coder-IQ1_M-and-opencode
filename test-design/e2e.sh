@@ -348,9 +348,38 @@ t_s42() {  # tty settings restored on exit: shell still reads lines
   report s42 "$ok"
 }
 
+t_s50() {  # C-k kills the line; C-y pastes it back at point
+  start_session s50
+  sendb $'\013'
+  local ok=1
+  expect_absent 'This is the first line' || ok=0
+  sendb $'\031'
+  expect 'This is the first line' || ok=0
+  report s50 "$ok"
+}
+
+t_s51() {  # consecutive C-k accumulate (line + newline); one C-y restores both rows
+  start_session s51
+  sendb $'\013' $'\013'
+  local ok=1
+  expect_absent 'This is the first line' || ok=0
+  sendb $'\031'
+  expect 'This is the first line' || ok=0
+  expect 'of the demo buffer.' || ok=0
+  report s51 "$ok"
+}
+
+t_s52() {  # killed text survives intervening commands; paste lands after the typed X
+  start_session s52
+  sendb $'\013' 'X' $'\031'
+  local ok=1
+  expect 'XThis is the first line' || ok=0
+  report s52 "$ok"
+}
+
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52; do
   "$t"
 done
 

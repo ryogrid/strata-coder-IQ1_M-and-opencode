@@ -124,7 +124,15 @@ These target the three failure modes reported on real WSL2 ttys.
 |------|-----------------------------------------------|----------------------|
 | s40 | argv[1] = 30-line CRLF (`\r\n`) file          | `CRLF LINE 01`/`23` visible; after 25 x C-n: `CRLF LINE 26` visible and `CRLF LINE 01` scrolled off |
 | s41 | argv file; `Up Up Down Right Right Left` (tmux named keys); type `Z` | `LZINE 02 of big file` (arrows moved the cursor); no `ALINE`/`BLINE`/`CLINE`/`DLIN` junk inserted |
-| s42 | argv file; C-x C-c; type `echo RESTORED_TTY` + Enter | `RESTORED_TTY` executes: the controlling tty was restored on exit |
+| s42 | argv file; C-x C-c; type `echo RESTORED_TTY` + Enter    | `RESTORED_TTY` executes: the controlling tty was restored on exit |
+
+## Kill/paste scenarios (seed buffer)
+
+| ID   | Setup                                | Expected observation |
+|------|---------------------------------------|----------------------|
+| s50 | C-k; C-y                              | first line gone after C-k; `This is the first line` pasted back by C-y |
+| s51 | C-k; C-k; C-y                         | buffer emptied of both rows; one C-y restores both rows (consecutive kills accumulate the newline) |
+| s52 | C-k; type `X`; C-y                    | `XThis is the first line`: killed text survives intervening commands, paste at point |
 
 ## Running
 
@@ -183,3 +191,9 @@ touched by the harness.
   Rendering is now hand-rolled ANSI only: 1-based `ESC[<row>;<col>H`
   before every cell, `ESC[2J` + `ESC[1;1H` to clear, and one flush per
   cell so the move and its text always arrive as a single atomic write.
+- Reported by the user (fixed): `C-k` followed by `C-y` pasted nothing.
+  `C-y` (0x19) had no dispatch branch at all and `kill_to_end_of_line`
+  dropped the cut text. kill now returns the killed `String`;
+  `src/main.rs` keeps a `killed` accumulator — consecutive `C-k`
+  commands concatenate (Emacs-style, newline included), any other
+  command ends the accumulation run — and `C-y` re-inserts it at point.

@@ -213,16 +213,20 @@ impl Buffer {
         }
     }
 
-    pub fn kill_to_end_of_line(self: &mut Buffer) {
+    pub fn kill_to_end_of_line(self: &mut Buffer) -> String {
         if self.point < self.len() && self.char_at(self.point) == '\n' {
             self.delete_forward();
+            return "\n".to_string();
         } else {
             let n = self.line_end(self.point) - self.point;
+            let mut cut: Vec<char> = vec![];
             let mut i = 0;
             while i < n {
+                cut.push(self.char_at(self.point));
                 self.delete_forward();
                 i += 1;
             }
+            return cut.iter().collect::<String>();
         }
     }
 
@@ -374,7 +378,8 @@ fn editing_and_navigation() {
     assert!(b.point == 15);
     b.backward_word();
     assert!(b.point == 10);
-    b.kill_to_end_of_line();
+    let cut = b.kill_to_end_of_line();
+    assert!(cut == "world".to_string());
     assert!(b.text() == "hello big ");
     b.point = 10;
     b.transpose_chars();
