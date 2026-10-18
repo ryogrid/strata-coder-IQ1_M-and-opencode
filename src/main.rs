@@ -38,7 +38,10 @@ fn main() {
             if n == 0x03 {
                 break; // Ctrl-x Ctrl-c
             }
-            if n == 0x32 { // Ctrl-x 2: split-window-below
+            if n == 0x31 { // Ctrl-x 1: delete-other-windows
+                tree.collapse(active);
+                msg = "".to_string();
+            } else if n == 0x32 { // Ctrl-x 2: split-window-below
                 tree.split(active, true);
                 msg = "".to_string();
             } else if n == 0x33 { // Ctrl-x 3: split-window-right
