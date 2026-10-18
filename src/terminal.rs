@@ -44,14 +44,21 @@ pub fn restore_mode(saved: Option<Termios>) {
     }
 }
 
-// Read a single byte from stdin (raw mode). Returns 0 on EOF.
-pub fn read_byte() -> u8 {
+// Read a single byte from stdin (raw mode). Returns [byte, eof]:
+// a real NUL byte (Ctrl-space) is Ok(1) and must not be confused with EOF,
+// which happens when read() returns no bytes at all.
+pub fn read_byte_eof() -> Vec<u8> {
     let mut buf = [0u8; 1];
     let r = stdin().lock().read(&mut buf);
     match r {
-        Ok(1) => buf[0],
-        _ => 0,
+        Ok(1) => vec![buf[0], 0],
+        _ => vec![0, 1],
     }
+}
+
+// Read a single byte from stdin (raw mode). Returns 0 on EOF.
+pub fn read_byte() -> u8 {
+    read_byte_eof()[0]
 }
 
 // Read one UTF-8 code point given its first byte.
@@ -78,10 +85,12 @@ pub fn read_char_from(first: u8) -> char {
     }
 }
 
-// Read a line of input in raw mode with local echo. Empty string means
-// cancelled (Ctrl-g) or EOF.
+// Read a line of input in raw mode with local echo, printed on the bottom
+// (status) row so it replaces the status line like Emacs minibuffer prompts.
 pub fn read_line(prompt: String) -> String {
-    print!("\x1b[1;1H\x1b[2K"); // home + clear line
+    let sz = curses::canvas::get_size();
+    let row = if sz.rows > 0 { sz.rows } else { 24 };
+    print!("\x1b[{};1H\x1b[2K", row);
     print!("{}", prompt);
     flush_stdout();
     let mut out: Vec<char> = vec![];

@@ -17,6 +17,17 @@ fn write_file(path: String, text: String) -> bool {
     }
 }
 
+fn find_buffer(bufs: &[buffer::Buffer], name: String) -> Vec<usize> {
+    let mut j = 0;
+    while j < bufs.len() {
+        if bufs[j].name == name {
+            return vec![j];
+        }
+        j += 1;
+    }
+    return vec![];
+}
+
 fn main() {
     let saved_tty = terminal::save_raw_mode();
     let args: Vec<String> = std::env::args().collect();
@@ -37,9 +48,13 @@ fn main() {
         let bi = tree.leaves[active].buffer;
         bufs[bi].point = tree.leaves[active].point;
         bufs[bi].mark = tree.leaves[active].mark;
-        let b = terminal::read_byte();
-        if b == 0x03 || b == 0 {
-            break; // Ctrl-c / EOF
+        let rb = terminal::read_byte_eof();
+        if rb[1] == 1 {
+            break; // EOF (no byte read at all)
+        }
+        let b = rb[0];
+        if b == 0x03 {
+            break; // Ctrl-c
         }
         let mut moved = false;
         if b == 0x18 {
@@ -74,12 +89,21 @@ fn main() {
                 }
                 moved = true;
                 msg = "".to_string();
-            } else if n == 0x06 { // Ctrl-x Ctrl-f: load
+            } else if n == 0x06 { // Ctrl-x Ctrl-f: open file in a split window below
                 let path = terminal::read_line("Find file: ".to_string());
                 if path.len() > 0 {
-                    bufs[bi] = buffer::Buffer::new(path.to_string(), read_file(path.to_string()));
-                    bufs[bi].filename = Some(path);
-                    bufs[bi].modified = false;
+                    let nb = bufs.len();
+                    bufs.push(buffer::Buffer::new(path.to_string(), read_file(path.to_string())));
+                    bufs[nb].filename = Some(path.clone());
+                    bufs[nb].modified = false;
+                    tree.split(active, true);
+                    let copy_idx = tree.leaves.len() - 1;
+                    tree.leaves[copy_idx].buffer = nb;
+                    tree.leaves[copy_idx].point = 0;
+                    tree.leaves[copy_idx].mark = 0;
+                    tree.leaves[copy_idx].scroll = 0;
+                    active = copy_idx;
+                    moved = true;
                     msg = "".to_string();
                 }
             } else if n == 0x13 { // Ctrl-x Ctrl-s: save
@@ -119,6 +143,41 @@ fn main() {
                 bufs[bi].filename = None;
                 bufs[bi].modified = false;
                 msg = format!("Killed buffer {}", name);
+            } else if n == 0x62 || n == 0x02 { // Ctrl-x b / Ctrl-x Ctrl-b: switch-to-buffer & buffer list select
+                let mut names = "".to_string();
+                let mut j = 0;
+                while j < bufs.len() {
+                    if j > 0 { names = format!("{} {}", names, bufs[j].name); } else { names = bufs[j].name.clone(); }
+                    j += 1;
+                }
+                let prompt = if n == 0x02 { format!("Buffers: {} Enter=next, name: ", names) } else { "Switch to buffer: ".to_string() };
+                let sel = terminal::read_line(prompt);
+                let mut ti = 999999;
+                if sel.len() > 0 {
+                    let hit = find_buffer(&bufs, sel.to_string());
+                    if hit.len() > 0 { ti = hit[0]; }
+                } else if n == 0x02 { // Ctrl-x Ctrl-b + Enter: cycle to the next buffer
+                    let nxt = if bi + 1 < bufs.len() { bi + 1 } else { 0 };
+                    ti = nxt;
+                }
+                if ti == 999999 && sel.len() == 0 {
+                    msg = "Cancelled".to_string();
+                } else if ti < bufs.len() {
+                    tree.leaves[active].buffer = ti;
+                    tree.leaves[active].point = 0;
+                    tree.leaves[active].mark = 0;
+                    tree.leaves[active].scroll = 0;
+                    moved = true;
+                    msg = "".to_string();
+                } else {
+                    bufs.push(buffer::Buffer::new(sel.to_string(), "".to_string()));
+                    tree.leaves[active].buffer = bufs.len() - 1;
+                    tree.leaves[active].point = 0;
+                    tree.leaves[active].mark = 0;
+                    tree.leaves[active].scroll = 0;
+                    moved = true;
+                    msg = "".to_string();
+                }
             }
         } else if b == 0x13 { // Ctrl-s: forward search
             let q = terminal::read_line("Find: ".to_string());
@@ -170,6 +229,9 @@ fn main() {
             } else if n == 0x3e {
                 bufs[bi].end_of_buffer();
             }
+        } else if b == 0x00 { // Ctrl-space: set the mark (region start)
+            bufs[bi].mark = bufs[bi].point;
+            msg = "".to_string();
         } else if b == 0x01 {
             bufs[bi].beginning_of_line(); // Ctrl-a
         } else if b == 0x02 {

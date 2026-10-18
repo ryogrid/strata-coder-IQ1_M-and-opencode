@@ -1,6 +1,7 @@
-// Multi-window rendering: status/echo line at the top, buffer text per
-// window frame (laid out by the binary split tree), terminal cursor parked
-// at the active window's point.
+// Multi-window rendering: buffer text per window frame (laid out by the
+// binary split tree), status line pinned to the bottom row of the screen
+// (always displayed: buffer name, modified flag, cursor line/total, and
+// position percentage), terminal cursor parked at the active window's point.
 // Screen via the curses crate; manual ANSI fallback when the terminal
 // size is unknown (not a tty) or curses is not available.
 use super::buffer::Buffer;
@@ -62,7 +63,7 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     super::terminal::flush_stdout();
 
     let height = if rows > 1 { rows - 1 } else { 1 };
-    let frames = tree.layout(tree.root, 1, height, 0, cols);
+    let frames = tree.layout(tree.root, 0, height, 0, cols);
 
     let mut f = 0;
     while f < frames.len() {
@@ -82,14 +83,9 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     }
 
     let abuf = &bufs[tree.leaves[active].buffer];
-    let status = if msg.len() > 0 {
-        msg.to_string()
-    } else if abuf.modified {
-        format!("Buf {} *", abuf.name).to_string()
-    } else {
-        format!("Buf {}", abuf.name).to_string()
-    };
-    draw_cell(0, 0, status, cols);
+    let mut st_line = 1;
+    let mut st_total = 1;
+    let mut st_pct = 0;
 
     let mut crow = 1;
     let mut ccol = 0;
@@ -113,6 +109,10 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
             let pos = point_pos(buf.text(), tree.leaves[leaf_idx].point);
             let pline = pos[0];
             let pcol = pos[1];
+            st_line = pline + 1;
+            st_total = lines.len();
+            let len = buf.len();
+            st_pct = if len > 0 { tree.leaves[leaf_idx].point * 100 / len } else { 0 };
             crow = frames[i].top + (pline - tree.leaves[leaf_idx].scroll);
             let maxc = if frames[i].width > 0 { frames[i].width - 1 } else { 0 };
             let pc = if pcol < maxc { pcol } else { maxc };
@@ -122,7 +122,20 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         i += 1;
     }
 
+    let label = if msg.len() > 0 {
+        msg.to_string()
+    } else if abuf.modified {
+        format!("Buf {} *", abuf.name).to_string()
+    } else {
+        format!("Buf {}", abuf.name).to_string()
+    };
+    let status = format!("{} {}/{} ({}%)", label, st_line, st_total, st_pct);
+    draw_cell(rows - 1, 0, status, cols);
+
     if have_cursor {
+        if rows > 1 && crow > rows - 2 {
+            crow = rows - 2; // never park the cursor on the status row
+        }
         print!("\x1b[{};{}H", crow + 1, ccol + 1);
         super::terminal::flush_stdout();
     }

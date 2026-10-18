@@ -51,12 +51,14 @@ Run the editor from a real terminal:
 With no arguments, starts a buffer named `*demo*` seeded with two sample
 lines; with an optional file path as the first argument, that file is
 loaded into the buffer (buffer name = path, file name set, unmodified —
-missing files open empty). The top row is
-the status line: `Buf <name>` (with a trailing `*` when modified); when a
-transient message exists (e.g. `Wrote file`, `Cancelled`,
-`Search string not found: q`) it replaces the status line for one frame.
-All commands are Emacs-style control keys: `C-x` is Ctrl-x, `M-x` is
-Meta/Esc followed by the key.
+missing files open empty). The bottom row is
+always the status line: `Buf <name> <line>/<total> (<pct>%)` — the trailing
+`<line>/<total>` and `<pct>%` give the point position in the buffer (1-based
+line, percent of buffer length); a trailing `*` before the position marks
+the buffer as modified; when a transient message exists (e.g. `Wrote file`,
+`Cancelled`, `Search string not found: q`) it replaces the status line for
+one frame. All commands are Emacs-style control keys: `C-x` is Ctrl-x, `M-x`
+is Meta/Esc followed by the key.
 
 | Key | Command |
 |-----|---------|
@@ -73,10 +75,13 @@ Meta/Esc followed by the key.
 | `C-d` / `DEL` | delete forward / delete backward (backspace) |
 | `C-o` | insert newline after point |
 | `C-t` | transpose chars around point |
-| `C-k` | kill to end of line |
+| `C-k` | kill to end of line (stops at the region mark when it is ahead on the line) |
 | `C-y` | paste killed text at point (consecutive `C-k`s accumulate, including the newline) |
+| `C-@` (`C-space`, NUL) | set the mark at point (start a region); when mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the region edge |
 | `C-q` | quote: insert next key literally |
-| `C-x C-f` | load file (prompt in status line, end with Enter) |
+| `C-x C-f` | open file in a new split window below (buffer name = path, status shows it; prompt in the bottom row, end with Enter) |
+| `C-x b` | switch-to-buffer: buffer name typed in the bottom-row minibuffer prompt, Enter switches the active window to that buffer (creates an empty one if new) |
+| `C-x C-b` | list all buffer names in the bottom-row minibuffer; type a name + Enter to select and switch to it |
 | `C-x C-s` | save buffer to its file |
 | `C-x C-w` | write buffer to a named file |
 | `C-x C-i` | insert contents of a file at point |

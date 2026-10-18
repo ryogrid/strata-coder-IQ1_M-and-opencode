@@ -16,8 +16,8 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 
 | Key | Command |
 |-----|---------|
-| `C-b` | `backward-char` |
-| `C-f` | `forward-char` |
+| `C-b` | `backward-char` (stops at mark when mark is on the current line) |
+| `C-f` | `forward-char` (stops at mark when mark is on the current line) |
 | `C-n` | `next-line` |
 | `C-p` | `previous-line` |
 | `C-a` | `beginning-of-line` |
@@ -38,11 +38,19 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 | `C-k` | `kill-to-end-of-line` |
 | `C-d` | `delete-forward` |
 
+## Regions / Mark
+
+| Key | Command |
+|-----|---------|
+| `C-space` (`C-@`, NUL) | `set-mark` at point (start a region) |
+
 ## Files
 
 | Key | Command |
 |-----|---------|
-| `C-x C-f` | `load` (open/find file) |
+| `C-x C-f` | `open-file-window` (open file in a new split window below; buffer named by path) |
+| `C-x b` | `switch-to-buffer` (name in echo/minibuffer line; creates empty buffer if new) |
+| `C-x C-b` | `buffer-list-select` (lists buffer names in the minibuffer; type a name, or Enter cycles to the next buffer) |
 | `C-x C-s` | `save` (write current buffer) |
 | `C-x C-w` | `write-file` (save as) |
 | `C-x C-i` | `insert-file` (insert file at point) |

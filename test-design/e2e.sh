@@ -37,7 +37,7 @@ t_s01() {
   start_session s01
   local ok=1
   expect 'This is the first line' || ok=0
-  expect '^Buf \*demo\*$' || ok=0
+  expect '^Buf \*demo\* 1/3 \(0%\)$' || ok=0
   report s01 "$ok"
 }
 
@@ -46,7 +46,7 @@ t_s02() {
   sendb 'hello world'
   local ok=1
   expect 'hello worldThis is the first line' || ok=0
-  expect '^Buf \*demo\* \*$' || ok=0
+  expect '^Buf \*demo\* \* 1/3 \(20%\)$' || ok=0
   report s02 "$ok"
 }
 
@@ -174,7 +174,7 @@ t_s16() {
   sendb $'\022buffer'
   enter
   local ok=1
-  expect '^Buf \*demo\*$' || ok=0
+  expect '^Buf \*demo\* 2/3 \(81%\)$' || ok=0
   expect_absent 'not found' || ok=0
   report s16 "$ok"
 }
@@ -296,7 +296,7 @@ t_s30() {  # file given as command-line argument is opened
   printf 'FROM ARG FIRST\nsecond arg line\n' > /tmp/emur-e2e-arg.txt
   start_session s30 /tmp/emur-e2e-arg.txt
   local ok=1
-  expect '^Buf /tmp/emur-e2e-arg\.txt$' || ok=0
+  expect '^Buf /tmp/emur-e2e-arg\.txt 1/3 \(0%\)$' || ok=0
   expect 'FROM ARG FIRST' || ok=0
   expect_absent '\*demo\*' || ok=0
   report s30 "$ok"
@@ -377,13 +377,95 @@ t_s52() {  # killed text survives intervening commands; paste lands after the ty
   report s52 "$ok"
 }
 
+expect_lastline() { [ "$(cap | tail -1)" = "$1" ]; }
+
+t_s60() {  # status line sits at the bottom and always shows line/total (pct)
+  start_session s60
+  local ok=1
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
+  sendb $'\006\006\006\006\006\006\006\006\006\006'
+  expect_lastline 'Buf *demo* 1/3 (23%)' || ok=0
+  report s60 "$ok"
+}
+
+t_s61() {  # C-@ sets mark; C-k kills only to the region end (mark)
+  start_session s61
+  tmux send-keys -t "$SESSION" C-@; sleep "$STEP"
+  sendb 'ABCDEFGHIJ' $'\002\002\002' $'\013'
+  local ok=1
+  expect 'ABCDEFGThis is the first line' || ok=0
+  expect_absent 'HIJ' || ok=0
+  report s61 "$ok"
+}
+
+t_s62() {  # C-a stops at region start (mark) inside the line
+  start_session s62
+  sendb 'ABCDEFGHIJ' $'\002\002\002'
+  tmux send-keys -t "$SESSION" C-@; sleep "$STEP"
+  sendb $'\006\006' $'\001' 'Z'
+  local ok=1
+  expect 'ABCDEFGZHIJThis is the first line' || ok=0
+  report s62 "$ok"
+}
+
+t_s63() {  # C-x C-f opens a file in a new split window; status shows its name
+  printf 'OPENED FIRST LINE\nOPENED SECOND\n' > /tmp/emur-e2e-open.txt
+  start_session s63
+  sendb $'\030\006' '/tmp/emur-e2e-open.txt'
+  enter
+  local ok=1
+  expect_lastline 'Buf /tmp/emur-e2e-open.txt 1/3 (0%)' || ok=0
+  expect 'OPENED FIRST LINE' || ok=0
+  expect 'This is the first line' || ok=0
+  report s63 "$ok"
+}
+
+t_s70() {  # C-x b switches the active window back to the *demo* buffer
+  printf 'SWITCHED CONTENT\n' > /tmp/emur-e2e-sw.txt
+  start_session s70
+  sendb $'\030\006' '/tmp/emur-e2e-sw.txt'
+  enter
+  sendb $'\030b' '*demo*'
+  enter
+  local ok=1
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
+  sendb $'\030\002'
+  expect 'Buffers: \*demo\* /tmp/emur-e2e-sw\.txt' || ok=0
+  report s70 "$ok"
+}
+
+t_s71() {  # C-x b to a new name creates an empty buffer (seed text gone)
+  start_session s71
+  sendb $'\030b' 'fresh'
+  enter
+  sendb 'K'
+  local ok=1
+  expect '^K$' || ok=0
+  expect_absent 'This is the first line' || ok=0
+  expect_lastline 'Buf fresh * 1/1 (100%)' || ok=0
+  report s71 "$ok"
+}
+
+t_s72() {  # Ctrl-x Ctrl-b lists buffers in the minibuffer; Enter cycles to the next one
+  printf 'CYCLE CONTENT\n' > /tmp/emur-e2e-cyc.txt
+  start_session s72
+  sendb $'\030\006' '/tmp/emur-e2e-cyc.txt'
+  enter
+  sendb $'\030\002'
+  local ok=1
+  expect 'Buffers: \*demo\* /tmp/emur-e2e-cyc\.txt' || ok=0
+  enter
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
+  report s72 "$ok"
+}
+
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72; do
   "$t"
 done
 
-rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt
+rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"

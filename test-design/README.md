@@ -134,6 +134,18 @@ These target the three failure modes reported on real WSL2 ttys.
 | s51 | C-k; C-k; C-y                         | buffer emptied of both rows; one C-y restores both rows (consecutive kills accumulate the newline) |
 | s52 | C-k; type `X`; C-y                    | `XThis is the first line`: killed text survives intervening commands, paste at point |
 
+## Buffer / window feature scenarios (this round)
+
+| ID   | Setup                                | Expected observation |
+|------|---------------------------------------|----------------------|
+| s60 | (boot) + 10 x C-f                    | bottom row shows `Buf *demo* 1/3 (0%)` before typing and `Buf *demo* 1/3 (23%)` after: status is always the bottom row and carries line/total + point-percentage |
+| s61 | C-@ ; type `ABCDEFGHIJ`; C-b x3; C-k | line becomes `ABCDEFGThis is the first line` — `C-k` killed only `HIJ` (the region between point and mark), not to end of line |
+| s62 | type `ABCDEFGHIJ`; C-b x3; C-@; C-f x2; C-a; type `Z` | `ABCDEFGZHIJThis is the first line` — `C-a` stopped at the region mark (point 7) instead of line start |
+| s63 | C-x C-f `/tmp/emur-e2e-open.txt`     | two windows: opened-file buffer below, `*demo*` above; bottom status `Buf /tmp/emur-e2e-open.txt 1/3 (0%)` (filename shown in status) |
+| s70 | C-x C-f `/tmp/emur-e2e-sw.txt`; C-x b `*demo*` Enter; Ctrl-x Ctrl-b | bottom window switches back to `*demo*` (status `Buf *demo* 1/3 (0%)`); the minibuffer list still shows `Buffers: *demo* /tmp/emur-e2e-sw.txt` (the switched-away buffer remains) |
+| s71 | C-x b `fresh` Enter; type `K`        | active window now a fresh empty buffer: only `K` on its row, seed text absent; status `Buf fresh * 1/1 (100%)` |
+| s72 | C-x C-f `/tmp/emur-e2e-cyc.txt`; Ctrl-x Ctrl-b; Enter | minibuffer lists `Buffers: *demo* /tmp/emur-e2e-cyc.txt`; Enter cycles the window to the next buffer: status back to `Buf *demo* 1/3 (0%)` |
+
 ## Running
 
 ```
@@ -153,6 +165,14 @@ touched by the harness.
 - Status-line assertions are done against the *cleared* last frame: after
   each dispatch the whole screen is refreshed, so leftover prompts
   (`Find file: ` etc.) never pollute the capture.
+- `expect_lastline` compares the *exact* bottom-row string (`=`), used to
+  pin the new always-bottom status format `Buf <name>[*] <line>/<total>
+  (<pct>%)`. s16's demo seed is 78 chars long so reverse-search point 63
+  renders `2/3 (81%)`.
+- tmux `C-@` sends a real NUL (0x00) byte, so `C-space` mark tests need
+  `read_byte_eof` in `src/terminal.rs` to distinguish NUL from EOF (plain
+  `read()` returning `Ok(0)`); the `0x00` key branch is checked before the
+  printable/self-insert branches in `src/main.rs`.
 - Found by this harness (fixed in `src/terminal.rs`): the raw-mode setup
   kept `IXOFF` (and `IXON`/`XON`) set, so the tty intercepted Ctrl-S (0x13,
   XOFF) as flow control and the editor never received it. Raw mode now

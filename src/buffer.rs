@@ -129,22 +129,48 @@ impl Buffer {
 
     pub fn forward_char(self: &mut Buffer) {
         if self.point < self.len() {
-            self.point += 1;
+            let mut target = self.point + 1;
+            if self.mark > self.point && self.mark <= self.line_end(self.point) {
+                target = self.mark; // the mark (region end) sits ahead on this line
+            }
+            if target < self.point {
+                target = self.point;
+            }
+            self.point = target;
         }
     }
 
     pub fn backward_char(self: &mut Buffer) {
         if self.point > 0 {
-            self.point -= 1;
+            let mut target = self.point - 1;
+            if self.mark < self.point && self.mark >= self.line_start(self.point) {
+                target = self.mark; // the mark (region start) sits behind on this line
+            }
+            if target > self.point {
+                target = self.point;
+            }
+            self.point = target;
         }
     }
 
     pub fn beginning_of_line(self: &mut Buffer) {
-        self.point = self.line_start(self.point);
+        let ls = self.line_start(self.point);
+        let mut target = ls;
+        if self.mark != self.point && self.mark >= ls && self.mark < self.point {
+            target = self.mark; // region start inside this line
+        }
+        self.point = target;
     }
 
     pub fn end_of_line(self: &mut Buffer) {
-        self.point = self.line_end(self.point);
+        let le = self.line_end(self.point);
+        let mut target = le;
+        if self.mark != self.point && self.mark > self.point && self.mark <= le {
+            target = self.mark; // region end inside this line
+        } else if self.mark != self.point && self.mark < self.point && self.mark >= self.line_start(self.point) {
+            target = self.point; // point already sits at the region end
+        }
+        self.point = target;
     }
 
     pub fn next_line(self: &mut Buffer) {
@@ -214,11 +240,19 @@ impl Buffer {
     }
 
     pub fn kill_to_end_of_line(self: &mut Buffer) -> String {
-        if self.point < self.len() && self.char_at(self.point) == '\n' {
+        let ls = self.line_start(self.point);
+        let le = self.line_end(self.point);
+        let hi = if self.mark != self.point && self.mark >= ls && self.mark <= le {
+            if self.mark > self.point { self.mark } else { self.point }
+        } else {
+            self.len()
+        };
+        if self.point < self.len() && self.char_at(self.point) == '\n' && self.point < hi {
             self.delete_forward();
             return "\n".to_string();
         } else {
-            let n = self.line_end(self.point) - self.point;
+            let stop = if le < hi { le } else { hi };
+            let n = if stop > self.point { stop - self.point } else { 0 };
             let mut cut: Vec<char> = vec![];
             let mut i = 0;
             while i < n {
@@ -344,6 +378,16 @@ fn gap_buffer_roundtrip() {
     assert!(b.len() == 4);
 }
 #[test]
+fn region_probe() {
+    let mut b = Buffer::new("t".to_string(), "one\ntwo22\nthree".to_string());
+    assert!(b.mark == 0 && b.point == 0);
+    b.next_line();
+    assert!(b.point == 4);
+    assert!(b.mark == 0);
+    b.forward_char();
+    assert!(b.point == 5);
+}
+#[test]
 fn cursor_movement() {
     let mut b = Buffer::new("t".to_string(), "one\ntwo22\nthree".to_string());
     b.point = 6;
@@ -378,6 +422,8 @@ fn editing_and_navigation() {
     assert!(b.point == 15);
     b.backward_word();
     assert!(b.point == 10);
+    b.point = 10;
+    b.mark = b.point; // no active region: kill goes to end of line
     let cut = b.kill_to_end_of_line();
     assert!(cut == "world".to_string());
     assert!(b.text() == "hello big ");
