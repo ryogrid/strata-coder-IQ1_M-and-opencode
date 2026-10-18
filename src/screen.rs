@@ -123,6 +123,7 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
             print!("\x1b[{};{}H", crow + 1, ccol + 1);
         }
     }
+    super::terminal::flush_stdout();
     tree
 }
 
@@ -132,7 +133,10 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, tty: bool) {
         if chars.len() >= width {
             break;
         }
-        chars.push(c);
+        // Control chars (CR, TAB, ...) must never reach the screen: a stray
+        // CR over a padded cell wipes the line (CRLF files looked blank).
+        let d = if c < ' ' { ' ' } else { c };
+        chars.push(d);
     }
     while chars.len() < width {
         chars.push(' ');

@@ -116,6 +116,16 @@ editor. When a path argument is given, the editor opens it as the buffer
 | s30 | argv[1] = `/tmp/emur-e2e-arg.txt`      | status `Buf /tmp/emur-e2e-arg.txt`; file content visible; `*demo*` absent |
 | s31 | argv file; type `X`; C-x C-s            | status `Wrote /tmp/emur-e2e-arg.txt` (no prompt needed); file now contains `XFROM ARG FIRST` |
 
+## WSL2 / tty failure-mode scenarios
+
+These target the three failure modes reported on real WSL2 ttys.
+
+| ID   | Setup                                        | Expected observation |
+|------|-----------------------------------------------|----------------------|
+| s40 | argv[1] = 30-line CRLF (`\r\n`) file          | `CRLF LINE 01`/`23` visible; after 25 x C-n: `CRLF LINE 26` visible and `CRLF LINE 01` scrolled off |
+| s41 | argv file; `Up Up Down Right Right Left` (tmux named keys); type `Z` | `LZINE 02 of big file` (arrows moved the cursor); no `ALINE`/`BLINE`/`CLINE`/`DLIN` junk inserted |
+| s42 | argv file; C-x C-c; type `echo RESTORED_TTY` + Enter | `RESTORED_TTY` executes: the controlling tty was restored on exit |
+
 ## Running
 
 ```
@@ -146,3 +156,23 @@ touched by the harness.
   did not record `Buffer.filename`, so a subsequent `C-x C-s` (save)
   reported "No file name for this buffer". write-file now sets
   `filename` before writing, matching Emacs semantics.
+- Found on WSL2 (fixed in `src/terminal.rs`): the editor left the tty in
+  raw mode on exit (SIGINT/EOL/echo broken in the parent shell
+  afterwards). `save_raw_mode()` now returns the original `Termios` and
+  `restore_mode()` reapplies it after the main loop; s42 asserts the
+  shell still reads lines after quit.
+- Found on WSL2 (fixed in `src/screen.rs`): control characters from
+  buffer content reached the screen. A CRLF (Windows) file carries `\r`
+  into every line; the stray CR re-positioned the cursor to column 1
+  before the padding spaces, visually wiping whole rows so scrolling
+  looked frozen. `draw_cell` now renders any `c < ' '` as a space.
+- Found on WSL2 (fixed in `src/main.rs`): `ESC [ A/B/C/D` (arrow keys)
+  fell into the Meta handler and the trailing letter was self-inserted.
+  Arrow keys now dispatch to previous/next line and backward/forward
+  char.
+- Found on WSL2 (fixed via `terminal::flush_stdout`): stdout was never
+  flushed. Rust line-buffers stdout, the editor emits no `\n` per frame,
+  and `refresh()` erases the whole screen first — so a real terminal
+  showed a wiped/partially repainted screen (scrolling appeared broken,
+  prompts invisible) and the last unflushed frame was lost on exit.
+  Every frame and every local-echo step now ends with an explicit flush.

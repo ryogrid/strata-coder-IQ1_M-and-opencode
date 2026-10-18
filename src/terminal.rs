@@ -1,20 +1,46 @@
 use termios::*;
 use std::io::stdin;
 use std::io::Read;
+use std::io::stdout;
+use std::io::Write;
+
+// Flush the userspace stdout buffer. Rust line-buffers stdout and the editor
+// writes no newlines during frames, so without this the screen (and query
+// prompts) would not update until the 4 KiB buffer boundary.
+pub fn flush_stdout() {
+    let mut so = stdout();
+    so.flush();
+}
 
 // Put the controlling tty into raw mode so control codes arrive as raw bytes.
-pub fn enter_raw_mode() {
+pub fn save_raw_mode() -> Option<Termios> {
     let fd = 0; // stdin
     let t = Termios::from_fd(fd);
     match t {
         Ok(t) => {
+            let orig = t;
             let mut t = t;
             t.c_lflag &= !(ICANON | ECHO | ECHOE | ECHOK | ECHONL | ISIG | IEXTEN);
             t.c_oflag &= !OPOST;
             t.c_iflag &= !(INLCR | IGNCR | ICRNL | IGNBRK | IXON | IXOFF);
             tcsetattr(fd, TCSANOW, &t);
+            return Some(orig);
         }
-        Err(_) => {}, // not a tty (pipe/redirect): nothing to configure
+        Err(_) => {
+            return None; // not a tty: nothing configured or saved
+        }
+    }
+}
+
+// Restore the tty settings captured by save_raw_mode so the controlling
+// shell is not left in raw mode when the editor exits.
+pub fn restore_mode(saved: Option<Termios>) {
+    match saved {
+        Some(t) => {
+            let fd = 0;
+            let _ = tcsetattr(fd, TCSANOW, &t);
+        }
+        None => {}
     }
 }
 
@@ -57,26 +83,31 @@ pub fn read_char_from(first: u8) -> char {
 pub fn read_line(prompt: String) -> String {
     print!("\x1b[1;1H\x1b[2K"); // home + clear line
     print!("{}", prompt);
+    flush_stdout();
     let mut out: Vec<char> = vec![];
     loop {
         let b = read_byte();
         if b == 0x0D || b == 0x0A || b == 0 {
             print!("\r\n");
+            flush_stdout();
             return out.iter().collect::<String>();
         }
         if b == 0x07 { // Ctrl-g cancel
             print!(" [Cancelled]\r\n");
+            flush_stdout();
             return "".to_string();
         }
         if b == 0x7f { // backspace
             if out.len() > 0 {
                 out.pop();
                 print!("\x08 \x08");
+                flush_stdout();
             }
             continue;
         }
         let c = read_char_from(b);
         out.push(c);
         print!("{}", c);
+        flush_stdout();
     }
 }

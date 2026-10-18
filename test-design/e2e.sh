@@ -313,13 +313,48 @@ t_s31() {  # CLI-opened buffer saves to its file without prompt
   report s31 "$ok"
 }
 
+t_s40() {  # CRLF (Windows) file renders normally and scrolls on C-n
+  python3 -c 'import sys; sys.stdout.write("".join("CRLF LINE %02d\r\n" % i for i in range(1,31)))' > /tmp/emur-e2e-crlf.txt
+  start_session s40 /tmp/emur-e2e-crlf.txt
+  local ok=1
+  expect 'CRLF LINE 01' || ok=0
+  expect 'CRLF LINE 23' || ok=0
+  sendb $'\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016\016'
+  expect 'CRLF LINE 26' || ok=0
+  expect_absent 'CRLF LINE 01' || ok=0
+  report s40 "$ok"
+}
+
+t_s41() {  # ANSI arrow keys move the cursor instead of inserting junk
+  python3 -c 'import sys; sys.stdout.write("".join("LINE %02d of big file\n" % i for i in range(1,41)))' > /tmp/emur-e2e-big.txt
+  start_session s41 /tmp/emur-e2e-big.txt
+  tmux send-keys -t "$SESSION" Up Up Down Right Right Left
+  sleep "$STEP"
+  sendb 'Z'
+  local ok=1
+  expect 'LZINE 02 of big file' || ok=0
+  expect_absent 'ALINE|BLINE|CLINE|DLIN' || ok=0
+  report s41 "$ok"
+}
+
+t_s42() {  # tty settings restored on exit: shell still reads lines
+  start_session s42 /tmp/emur-e2e-big.txt
+  sendb $'\030\003'
+  sleep 1
+  sendb 'echo RESTORED_TTY'
+  enter
+  local ok=1
+  expect 'RESTORED_TTY' || ok=0
+  report s42 "$ok"
+}
+
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42; do
   "$t"
 done
 
-rm -f /tmp/emur-e2e-insert.txt
+rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"

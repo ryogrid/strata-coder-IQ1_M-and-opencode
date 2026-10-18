@@ -66,6 +66,7 @@ Meta/Esc followed by the key.
 | `C-j` / `C-m` | insert newline at point |
 | `C-b` / `C-f` | backward / forward one char |
 | `C-n` / `C-p` | next / previous line |
+| arrow keys | same as `C-p` / `C-n` / `C-f` / `C-b` (ESC [ A/B/C/D) |
 | `C-a` / `C-e` | beginning / end of line |
 | `M-b` / `M-f` | backward / forward one word |
 | `M-<` / `M->` | beginning / end of buffer |
@@ -95,3 +96,12 @@ Notes:
 - `C-s` is only received by the editor because raw mode clears
   `IXON | IXOFF` (see `src/terminal.rs`); otherwise the tty would eat it
   as XOFF flow control.
+- Long files scroll: `C-n` / `C-p` (or arrow keys) move the point one
+  line at a time, and once the point leaves the visible rows the whole
+  window scrolls with it (one row per keystroke past the edge).
+- Buffer text may contain control characters (e.g. `\r` from Windows
+  CRLF files); the renderer replaces them with spaces so lines and
+  scrolling never corrupt the screen. The buffer itself is unchanged.
+- Quitting restores the tty settings that were saved on startup, so the
+  controlling shell keeps working normally (SIGINT, EOL, echo) after the
+  editor exits.

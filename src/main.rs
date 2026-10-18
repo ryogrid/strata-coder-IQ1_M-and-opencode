@@ -18,7 +18,7 @@ fn write_file(path: String, text: String) -> bool {
 }
 
 fn main() {
-    terminal::enter_raw_mode();
+    let saved_tty = terminal::save_raw_mode();
     let args: Vec<String> = std::env::args().collect();
     let mut bufs = vec![buffer::Buffer::new("*demo*".to_string(), "This is the first line\nof the demo buffer.\n".to_string())];
     if args.len() > 1 {
@@ -148,7 +148,18 @@ fn main() {
             msg = "Cancelled".to_string();
         } else if b == 0x1b {
             let n = terminal::read_byte(); // Meta prefix
-            if n == 0x62 {
+            if n == 0x5b { // ANSI arrow keys: ESC [ A/B/C/D
+                let t = terminal::read_byte();
+                if t == 0x41 {
+                    bufs[bi].previous_line(); // Up
+                } else if t == 0x42 {
+                    bufs[bi].next_line(); // Down
+                } else if t == 0x43 {
+                    bufs[bi].forward_char(); // Right
+                } else if t == 0x44 {
+                    bufs[bi].backward_char(); // Left
+                }
+            } else if n == 0x62 {
                 bufs[bi].backward_word();
             } else if n == 0x66 {
                 bufs[bi].forward_word();
@@ -194,4 +205,5 @@ fn main() {
             tree.leaves[active].mark = bufs[bi].mark;
         }
     }
+    terminal::restore_mode(saved_tty);
 }
