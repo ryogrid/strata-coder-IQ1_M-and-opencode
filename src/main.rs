@@ -1,6 +1,25 @@
 mod terminal;
 mod buffer;
 
+fn read_file(path: String) -> String {
+    match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => "".to_string(),
+    }
+}
+
+fn write_file(path: String, text: String) -> bool {
+    match std::fs::write(path, text.as_bytes()) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+fn echo(msg: String) {
+    print!("\x1b[1;1H\x1b[2K");
+    print!("{}\r\n", msg);
+}
+
 fn main() {
     terminal::enter_raw_mode();
     let mut buf = buffer::Buffer::new("*demo*".to_string(), "This is the first line\nof the demo buffer.\n".to_string());
@@ -14,7 +33,51 @@ fn main() {
             if n == 0x03 {
                 break; // Ctrl-x Ctrl-c
             }
-            continue; // other Ctrl-x keys bind later
+            if n == 0x06 { // Ctrl-x Ctrl-f: load
+                let path = terminal::read_line("Find file: ".to_string());
+                if path.len() > 0 {
+                    buf = buffer::Buffer::new(path.to_string(), read_file(path.to_string()));
+                    buf.filename = Some(path);
+                    buf.modified = false;
+                }
+            } else if n == 0x13 { // Ctrl-x Ctrl-s: save
+                let path = buf.filename.clone().map(|p| p.to_string()).unwrap_or("".to_string());
+                if path.len() > 0 {
+                    if write_file(path.to_string(), buf.text()) {
+                        buf.modified = false;
+                        echo(format!("Wrote {}", path));
+                    } else {
+                        echo(format!("Failed to write {}", path));
+                    }
+                } else {
+                    echo("No file name for this buffer".to_string());
+                }
+            } else if n == 0x17 { // Ctrl-x Ctrl-w: write-file
+                let path = terminal::read_line("Write file: ".to_string());
+                if path.len() > 0 {
+                    if write_file(path.to_string(), buf.text()) {
+                            buf.modified = false;
+                            echo(format!("Wrote {}", path));
+                        } else {
+                            echo(format!("Failed to write {}", path));
+                        }
+                }
+            } else if n == 0x09 { // Ctrl-x Ctrl-i: insert-file
+                let path = terminal::read_line("Insert file: ".to_string());
+                if path.len() > 0 {
+                    for c in read_file(path.to_string()).chars() {
+                        buf.insert_char(c);
+                    }
+                    echo(format!("Inserted file {}", path));
+                }
+            } else if n == 0x6b { // Ctrl-x k: kill-buffer
+                let name = buf.name;
+                buf = buffer::Buffer::new(name.to_string(), "".to_string());
+                buf.filename = None;
+                buf.modified = false;
+                echo(format!("Killed buffer {}", name));
+            }
+            continue;
         }
         if b == 0x1b {
             terminal::read_byte();
