@@ -86,6 +86,25 @@ One script: `test-design/e2e.sh` (bash). Design points:
 | s16 | Meta-> ; C-r `buffer` Enter                         | status back to `Buf *demo* ` (success clears msg); no "not found" |
 | s17 | C-x C-c                                             | pane shows `EMU_EXITED 0` |
 
+## Combined window-pattern scenarios
+
+These exercise split/erase combinations where global (shared) state
+(buffer text) and per-window state (point) interact. The seed line
+" This is the first line" is used as a countable landmark; typing
+effects are observed through the shared buffer text.
+
+| ID   | Setup                                                          | Expected observation |
+|------|-----------------------------------------------------------------|---------------------|
+| s20 | C-x 2; C-x 2 (split active, then split active again)          | seed line appears in 3 stacked windows (line count 3) |
+| s21 | C-x 2; C-x 3 (right-split the top window)                     | seed line occurs 3 times total (`expect_occ`, two on one pane row) |
+| s22 | C-x 2; C-x 3; then type `1` / C-x o `2` / C-x o `3`           | buffer text starts `321This is the first line` (3 windows, each with its own point 0) |
+| s23 | C-x 2; C-x o; type `X`; C-x 1; type `Y`                        | `XYThis is the first line` — erase (collapse) preserves the active window's point |
+| s24 | C-x 3; C-x o; type `R`; C-x 1; type `S`                        | `RSThis is the first line` (same via a right split) |
+| s25 | C-x 2; C-x o `X`; C-x 1; `Y`; C-x 2; C-x o; `Z`               | `ZYXThis is the first line` — erase then re-split inherits points |
+| s26 | C-x 2; C-x 3; C-x k; type `K`                                  | status `Killed buffer ...`; buffer is fresh-empty: only `K` on a line, seed text absent (kill works from a 3-window state) |
+| s27 | Meta-> ; C-r `buffer` Enter; C-x 1; type `Q`                   | `demo Qbuffer.` — a per-window point found by reverse search survives erase |
+| s28 | `foo bar` C-x C-w file; C-x C-f file; C-x 2; C-x o `F`; C-x 1; C-x C-s | status `Wrote /tmp/emur-e2e-write.txt`; file contains `Ffoo bar` |
+
 ## Running
 
 ```
