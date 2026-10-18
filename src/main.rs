@@ -19,7 +19,14 @@ fn write_file(path: String, text: String) -> bool {
 
 fn main() {
     terminal::enter_raw_mode();
+    let args: Vec<String> = std::env::args().collect();
     let mut bufs = vec![buffer::Buffer::new("*demo*".to_string(), "This is the first line\nof the demo buffer.\n".to_string())];
+    if args.len() > 1 {
+        let path = args[1].to_string();
+        let text = read_file(path.to_string());
+        bufs[0] = buffer::Buffer::new(path.to_string(), text);
+        bufs[0].filename = Some(path.to_string());
+    }
     let mut tree = window::new_tree(0);
     let mut active = 0;
     let mut msg = "".to_string();

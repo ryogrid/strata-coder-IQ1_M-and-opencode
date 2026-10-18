@@ -41,12 +41,17 @@ bash test-design/e2e.sh  # end-to-end tmux harness (requires tmux)
 Run the editor from a real terminal:
 
 ```sh
-./target/debug/emur
+./target/debug/emur             # opens the seeded *demo* buffer
+./target/debug/emur notes.txt   # opens notes.txt: buffer name = path,
+                                # filename set, so C-x C-s saves to it
 ```
 
 ## Editor usage
 
-Starts a buffer named `*demo*` seeded with two sample lines. The top row is
+With no arguments, starts a buffer named `*demo*` seeded with two sample
+lines; with an optional file path as the first argument, that file is
+loaded into the buffer (buffer name = path, file name set, unmodified —
+missing files open empty). The top row is
 the status line: `Buf <name>` (with a trailing `*` when modified); when a
 transient message exists (e.g. `Wrote file`, `Cancelled`,
 `Search string not found: q`) it replaces the status line for one frame.

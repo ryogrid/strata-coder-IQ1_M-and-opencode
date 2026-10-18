@@ -105,6 +105,17 @@ effects are observed through the shared buffer text.
 | s27 | Meta-> ; C-r `buffer` Enter; C-x 1; type `Q`                   | `demo Qbuffer.` — a per-window point found by reverse search survives erase |
 | s28 | `foo bar` C-x C-w file; C-x C-f file; C-x 2; C-x o `F`; C-x 1; C-x C-s | status `Wrote /tmp/emur-e2e-write.txt`; file contains `Ffoo bar` |
 
+## Command-line argument scenarios
+
+`start_session <id> [extra-args]` passes the file path as argv[1] to the
+editor. When a path argument is given, the editor opens it as the buffer
+(name = path, `filename` set) instead of the seeded `*demo*` buffer.
+
+| ID   | Setup                                   | Expected observation |
+|------|------------------------------------------|----------------------|
+| s30 | argv[1] = `/tmp/emur-e2e-arg.txt`      | status `Buf /tmp/emur-e2e-arg.txt`; file content visible; `*demo*` absent |
+| s31 | argv file; type `X`; C-x C-s            | status `Wrote /tmp/emur-e2e-arg.txt` (no prompt needed); file now contains `XFROM ARG FIRST` |
+
 ## Running
 
 ```

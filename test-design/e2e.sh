@@ -9,7 +9,8 @@ SESSION=""
 
 start_session() {
   SESSION="emu-e2e-$1"
-  tmux new-session -d -s "$SESSION" -x 80 -y 24 "$BIN; echo EMU_EXITED \$?; sleep 30"
+  local cmd="$BIN ${2:-}"
+  tmux new-session -d -s "$SESSION" -x 80 -y 24 "$cmd; echo EMU_EXITED \$?; sleep 30"
   sleep 0.6
 }
 
@@ -290,9 +291,31 @@ t_s28() {  # write/load + split + erase + save round-trip
 }
 
 rm -f /tmp/emur-e2e-write.txt
+
+t_s30() {  # file given as command-line argument is opened
+  printf 'FROM ARG FIRST\nsecond arg line\n' > /tmp/emur-e2e-arg.txt
+  start_session s30 /tmp/emur-e2e-arg.txt
+  local ok=1
+  expect '^Buf /tmp/emur-e2e-arg\.txt$' || ok=0
+  expect 'FROM ARG FIRST' || ok=0
+  expect_absent '\*demo\*' || ok=0
+  report s30 "$ok"
+}
+
+t_s31() {  # CLI-opened buffer saves to its file without prompt
+  printf 'FROM ARG FIRST\nsecond arg line\n' > /tmp/emur-e2e-arg.txt
+  start_session s31 /tmp/emur-e2e-arg.txt
+  sendb 'X'
+  sendb $'\030\023'
+  local ok=1
+  expect 'Wrote /tmp/emur-e2e-arg\.txt' || ok=0
+  grep -q 'XFROM ARG FIRST' /tmp/emur-e2e-arg.txt || ok=0
+  report s31 "$ok"
+}
+
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31; do
   "$t"
 done
 
