@@ -1,4 +1,5 @@
 mod terminal;
+mod buffer;
 
 fn main() {
     terminal::enter_raw_mode();
