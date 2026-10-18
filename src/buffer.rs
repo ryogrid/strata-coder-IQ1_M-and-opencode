@@ -43,16 +43,6 @@ impl Buffer {
         }
     }
 
-    pub fn to_pos(self: &Buffer, idx: usize) -> usize {
-        if idx < self.gap_start {
-            idx
-        } else if idx >= self.gap_end {
-            idx - (self.gap_end - self.gap_start)
-        } else {
-            self.gap_start
-        }
-    }
-
     pub fn move_gap(self: &mut Buffer, pos: usize) {
         let target = self.to_index(pos);
         while self.gap_start > target {
@@ -334,7 +324,7 @@ impl Buffer {
         if i > tchars.len() - pchars.len() {
             i = tchars.len() - pchars.len();
         }
-        while true {
+        loop {
             let mut ok = true;
             let mut k = 0;
             while k < pchars.len() {

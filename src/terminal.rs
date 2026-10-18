@@ -9,7 +9,10 @@ use std::io::Write;
 // prompts) would not update until the 4 KiB buffer boundary.
 pub fn flush_stdout() {
     let mut so = stdout();
-    so.flush();
+    match so.flush() {
+        Ok(_) => {}
+        Err(_) => {}
+    }
 }
 
 // Put the controlling tty into raw mode so control codes arrive as raw bytes.
@@ -23,7 +26,10 @@ pub fn save_raw_mode() -> Option<Termios> {
             t.c_lflag &= !(ICANON | ECHO | ECHOE | ECHOK | ECHONL | ISIG | IEXTEN);
             t.c_oflag &= !OPOST;
             t.c_iflag &= !(INLCR | IGNCR | ICRNL | IGNBRK | IXON | IXOFF);
-            tcsetattr(fd, TCSANOW, &t);
+            match tcsetattr(fd, TCSANOW, &t) {
+                Ok(_) => {}
+                Err(_) => {}
+            }
             return Some(orig);
         }
         Err(_) => {
@@ -117,7 +123,7 @@ pub fn has_prefix(name: String, input: String) -> bool {
 }
 
 // Candidates matching the typed input (all candidates when input is empty).
-pub fn completions(mut input: String, mut cands: Vec<String>) -> Vec<String> {
+pub fn completions(input: String, cands: Vec<String>) -> Vec<String> {
     let mut hits: Vec<String> = vec![];
     let mut j = 0;
     while j < cands.len() {
@@ -130,7 +136,7 @@ pub fn completions(mut input: String, mut cands: Vec<String>) -> Vec<String> {
 }
 
 // Longest common prefix of all candidates.
-pub fn common_prefix(mut list: Vec<String>) -> String {
+pub fn common_prefix(list: Vec<String>) -> String {
     if list.len() == 0 {
         return "".to_string();
     }
@@ -239,7 +245,7 @@ pub fn file_candidates(input: String) -> Vec<String> {
 // Tab completion against cands (or the filesystem when file_comp is set).
 // On a unique match the suffix is echoed; multiple matches echo their
 // common prefix and list the candidates. Returns the completed string.
-pub fn read_line_c(prompt: String, mut cands: Vec<String>, file_comp: bool) -> String {
+pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> String {
     let sz = curses::canvas::get_size();
     let row = if sz.rows > 0 { sz.rows } else { 24 };
     print!("\x1b[{};1H\x1b[2K", row);

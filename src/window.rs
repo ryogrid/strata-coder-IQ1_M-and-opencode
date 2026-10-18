@@ -42,11 +42,11 @@ pub fn new_tree(buffer: usize) -> Tree {
 }
 
 impl Tree {
-    pub fn collect(self: &Tree, mut slot: usize) -> Vec<usize> {
+    pub fn collect(self: &Tree, slot: usize) -> Vec<usize> {
         if self.kind[slot] == 0 {
             vec![self.which[slot]]
         } else {
-            let mut k = self.which[slot];
+            let k = self.which[slot];
             let mut acc = self.collect(self.nodes[k].a);
             acc.extend(self.collect(self.nodes[k].b).iter());
             acc
@@ -57,11 +57,11 @@ impl Tree {
         self.collect(self.root)
     }
 
-    pub fn layout(self: &Tree, mut slot: usize, mut top: usize, mut height: usize, mut col: usize, mut width: usize) -> Vec<Frame> {
+    pub fn layout(self: &Tree, slot: usize, top: usize, height: usize, col: usize, width: usize) -> Vec<Frame> {
         if self.kind[slot] == 0 {
             vec![Frame { leaf: self.which[slot], top: top, height: height, col: col, width: width }]
         } else {
-            let mut k = self.which[slot];
+            let k = self.which[slot];
             let vertical = self.nodes[k].vertical;
             if vertical && height >= 2 {
                 let h1 = (height + 1) / 2;
@@ -81,7 +81,7 @@ impl Tree {
         }
     }
 
-    pub fn find_slot(self: &Tree, mut slot: usize, leaf: usize) -> usize {
+    pub fn find_slot(self: &Tree, slot: usize, leaf: usize) -> usize {
         if self.kind[slot] == 0 {
             if self.which[slot] == leaf {
                 slot
@@ -89,7 +89,7 @@ impl Tree {
                 self.kind.len()
             }
         } else {
-            let mut k = self.which[slot];
+            let k = self.which[slot];
             let mut s = self.find_slot(self.nodes[k].a, leaf);
             if s == self.kind.len() {
                 s = self.find_slot(self.nodes[k].b, leaf);
@@ -98,7 +98,7 @@ impl Tree {
         }
     }
 
-    pub fn split(self: &mut Tree, mut leaf: usize, vertical: bool) -> bool {
+    pub fn split(self: &mut Tree, leaf: usize, vertical: bool) -> bool {
         let s = self.find_slot(self.root, leaf);
         if s >= self.kind.len() {
             return false;
@@ -127,7 +127,7 @@ impl Tree {
         false
     }
 
-    pub fn collapse(self: &mut Tree, mut leaf: usize) {
+    pub fn collapse(self: &mut Tree, leaf: usize) {
         let s = self.find_slot(self.root, leaf);
         if s < self.kind.len() {
             self.root = self.kind.len();

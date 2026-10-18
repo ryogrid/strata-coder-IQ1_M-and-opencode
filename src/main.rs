@@ -259,7 +259,6 @@ fn main() {
             } else {
                 killed = cut;
             }
-            prev_cmd = 0x0b;
         } else if b == 0x19 { // Ctrl-y: paste the killed text at point
             for c in killed.chars() {
                 bufs[bi].insert_char(c);
