@@ -101,6 +101,70 @@ impl Buffer {
         true
     }
 
+    pub fn char_at(self: &Buffer, pos: usize) -> char {
+        self.chars[self.to_index(pos)]
+    }
+
+    pub fn line_start(self: &Buffer, mut pos: usize) -> usize {
+        while pos > 0 && self.char_at(pos - 1) != '\n' {
+            pos -= 1;
+        }
+        pos
+    }
+
+    pub fn line_end(self: &Buffer, mut pos: usize) -> usize {
+        while pos < self.len() && self.char_at(pos) != '\n' {
+            pos += 1;
+        }
+        pos
+    }
+
+    pub fn line_column(self: &Buffer, pos: usize) -> usize {
+        pos - self.line_start(pos)
+    }
+
+    pub fn forward_char(self: &mut Buffer) {
+        if self.point < self.len() {
+            self.point += 1;
+        }
+    }
+
+    pub fn backward_char(self: &mut Buffer) {
+        if self.point > 0 {
+            self.point -= 1;
+        }
+    }
+
+    pub fn beginning_of_line(self: &mut Buffer) {
+        self.point = self.line_start(self.point);
+    }
+
+    pub fn end_of_line(self: &mut Buffer) {
+        self.point = self.line_end(self.point);
+    }
+
+    pub fn next_line(self: &mut Buffer) {
+        let col = self.line_column(self.point);
+        let lend = self.line_end(self.point);
+        if lend < self.len() {
+            let start = lend + 1;
+            let tend = self.line_end(start);
+            let max_col = tend - start;
+            self.point = start + if col < max_col { col } else { max_col };
+        }
+    }
+
+    pub fn previous_line(self: &mut Buffer) {
+        let ls = self.line_start(self.point);
+        if ls > 0 {
+            let col = self.line_column(self.point);
+            let prev_end = ls - 1;
+            let prev_start = self.line_start(prev_end);
+            let max_col = prev_end - prev_start;
+            self.point = prev_start + if col < max_col { col } else { max_col };
+        }
+    }
+
     pub fn text(self: &Buffer) -> String {
         let mut out: Vec<char> = vec![];
         out.extend(self.chars[0..self.gap_start].iter());
@@ -123,5 +187,23 @@ fn gap_buffer_roundtrip() {
     b.delete_backward();
     assert!(b.text() == "helo");
     assert!(b.len() == 4);
+}
+#[test]
+fn cursor_movement() {
+    let mut b = Buffer::new("t".to_string(), "one\ntwo22\nthree".to_string());
+    b.point = 6;
+    b.beginning_of_line();
+    assert!(b.point == 4);
+    b.next_line();
+    assert!(b.point == 10);
+    b.end_of_line();
+    assert!(b.point == 15);
+    b.previous_line();
+    assert!(b.point == 9);
+    b.backward_char();
+    b.backward_char();
+    assert!(b.point == 7);
+    b.forward_char();
+    assert!(b.point == 8);
 }
 }
