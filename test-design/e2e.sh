@@ -459,13 +459,60 @@ t_s72() {  # Ctrl-x Ctrl-b lists buffers in the minibuffer; Enter cycles to the 
   report s72 "$ok"
 }
 
+t_s80() {  # Tab in the Write-file minibuffer completes a unique path prefix
+  printf 'OLD CONTENT\n' > /tmp/emur-e2e-comp.txt
+  start_session s80
+  sendb 'TABTEST' $'\030\027'
+  sendb $'/tmp/emur-e2e-comp\t'
+  enter
+  local ok=1
+  expect 'Wrote /tmp/emur-e2e-comp\.txt' || ok=0
+  grep -q 'TABTEST' /tmp/emur-e2e-comp.txt || ok=0
+  report s80 "$ok"
+}
+
+t_s81() {  # Tab completes a unique buffer name (C-x b)
+  start_session s81
+  sendb $'\030b' $'*demo\t'
+  enter
+  local ok=1
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
+  report s81 "$ok"
+}
+
+t_s82() {  # ambiguous buffer completion lists candidates; disambiguating key finishes
+  start_session s82
+  sendb $'\030b' 'aa'
+  enter
+  sendb $'\030b' 'ab'
+  enter
+  sendb $'\030b' $'a\t'
+  local ok=1
+  expect 'aa ab' || ok=0
+  sendb 'b'
+  enter
+  expect_lastline 'Buf ab 1/1 (0%)' || ok=0
+  report s82 "$ok"
+}
+
+t_s83() {  # Tab in the Find-file minibuffer completes a unique path (split window)
+  printf 'FCOMP FIRST LINE\nFCOMP SECOND\n' > /tmp/emur-e2e-fcomp.txt
+  start_session s83
+  sendb $'\030\006' $'/tmp/emur-e2e-fcomp\t'
+  enter
+  local ok=1
+  expect_lastline 'Buf /tmp/emur-e2e-fcomp.txt 1/3 (0%)' || ok=0
+  expect 'FCOMP FIRST LINE' || ok=0
+  report s83 "$ok"
+}
+
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83; do
   "$t"
 done
 
-rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt
+rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"

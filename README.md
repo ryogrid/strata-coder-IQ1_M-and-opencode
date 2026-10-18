@@ -79,9 +79,9 @@ is Meta/Esc followed by the key.
 | `C-y` | paste killed text at point (consecutive `C-k`s accumulate, including the newline) |
 | `C-@` (`C-space`, NUL) | set the mark at point (start a region); when mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the region edge |
 | `C-q` | quote: insert next key literally |
-| `C-x C-f` | open file in a new split window below (buffer name = path, status shows it; prompt in the bottom row, end with Enter) |
-| `C-x b` | switch-to-buffer: buffer name typed in the bottom-row minibuffer prompt, Enter switches the active window to that buffer (creates an empty one if new) |
-| `C-x C-b` | list all buffer names in the bottom-row minibuffer; type a name + Enter to select and switch to it |
+| `C-x C-f` | open file in a new split window below (buffer name = path, status shows it; prompt in the bottom row, end with Enter; Tab completes a path from the directory listing) |
+| `C-x b` | switch-to-buffer: buffer name typed in the bottom-row minibuffer prompt (Tab completes a buffer name), Enter switches the active window to that buffer (creates an empty one if new) |
+| `C-x C-b` | list all buffer names in the bottom-row minibuffer; Tab completes among them; type a name + Enter to select and switch, Enter alone cycles to the next buffer |
 | `C-x C-s` | save buffer to its file |
 | `C-x C-w` | write buffer to a named file |
 | `C-x C-i` | insert contents of a file at point |

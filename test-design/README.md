@@ -146,6 +146,15 @@ These target the three failure modes reported on real WSL2 ttys.
 | s71 | C-x b `fresh` Enter; type `K`        | active window now a fresh empty buffer: only `K` on its row, seed text absent; status `Buf fresh * 1/1 (100%)` |
 | s72 | C-x C-f `/tmp/emur-e2e-cyc.txt`; Ctrl-x Ctrl-b; Enter | minibuffer lists `Buffers: *demo* /tmp/emur-e2e-cyc.txt`; Enter cycles the window to the next buffer: status back to `Buf *demo* 1/3 (0%)` |
 
+## Minibuffer Tab-completion scenarios
+
+| ID   | Setup                                | Expected observation |
+|------|---------------------------------------|----------------------|
+| s80 | type `TABTEST`; C-x C-w `/tmp/emur-e2e-comp` Tab Enter | Tab completes the unique path to `/tmp/emur-e2e-comp.txt`; status `Wrote ...`; file contains `TABTEST` |
+| s81 | C-x b `*demo` Tab Enter              | Tab expands the unique buffer name to `*demo*`; window switches, status `Buf *demo* 1/3 (0%)` |
+| s82 | C-x b `aa` Enter; C-x b `ab` Enter; C-x b `a` Tab | ambiguous completion echoes the candidate list `aa ab`; typing `b` Enter then switches: status `Buf ab 1/1 (0%)` |
+| s83 | C-x C-f `/tmp/emur-e2e-fcomp` Tab Enter | Tab completes the unique path; split window shows file content; status `Buf /tmp/emur-e2e-fcomp.txt 1/3 (0%)` |
+
 ## Running
 
 ```
@@ -162,6 +171,8 @@ touched by the harness.
 - `read_line` uses CR (`Enter`) as the terminator; send Enter as a tmux
   named key, not as a literal `\n`, otherwise the quit byte gets
   swallowed into the query.
+- tmux `send-keys -l $'\t'` sends a literal 0x09 Tab byte, so completion
+  tests embed `\t` inside the quoted path/name string sent to the prompt.
 - Status-line assertions are done against the *cleared* last frame: after
   each dispatch the whole screen is refreshed, so leftover prompts
   (`Find file: ` etc.) never pollute the capture.

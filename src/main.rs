@@ -90,7 +90,7 @@ fn main() {
                 moved = true;
                 msg = "".to_string();
             } else if n == 0x06 { // Ctrl-x Ctrl-f: open file in a split window below
-                let path = terminal::read_line("Find file: ".to_string());
+                let path = terminal::read_line_files("Find file: ".to_string());
                 if path.len() > 0 {
                     let nb = bufs.len();
                     bufs.push(buffer::Buffer::new(path.to_string(), read_file(path.to_string())));
@@ -119,7 +119,7 @@ fn main() {
                     msg = "No file name for this buffer".to_string();
                 }
             } else if n == 0x17 { // Ctrl-x Ctrl-w: write-file
-                let path = terminal::read_line("Write file: ".to_string());
+                let path = terminal::read_line_files("Write file: ".to_string());
                 if path.len() > 0 {
                     bufs[bi].filename = Some(path.clone());
                     if write_file(path.to_string(), bufs[bi].text()) {
@@ -130,7 +130,7 @@ fn main() {
                     }
                 }
             } else if n == 0x09 { // Ctrl-x Ctrl-i: insert-file
-                let path = terminal::read_line("Insert file: ".to_string());
+                let path = terminal::read_line_files("Insert file: ".to_string());
                 if path.len() > 0 {
                     for c in read_file(path.to_string()).chars() {
                         bufs[bi].insert_char(c);
@@ -145,13 +145,15 @@ fn main() {
                 msg = format!("Killed buffer {}", name);
             } else if n == 0x62 || n == 0x02 { // Ctrl-x b / Ctrl-x Ctrl-b: switch-to-buffer & buffer list select
                 let mut names = "".to_string();
+                let mut bnames: Vec<String> = vec![];
                 let mut j = 0;
                 while j < bufs.len() {
+                    bnames.push(bufs[j].name.clone());
                     if j > 0 { names = format!("{} {}", names, bufs[j].name); } else { names = bufs[j].name.clone(); }
                     j += 1;
                 }
                 let prompt = if n == 0x02 { format!("Buffers: {} Enter=next, name: ", names) } else { "Switch to buffer: ".to_string() };
-                let sel = terminal::read_line(prompt);
+                let sel = terminal::read_line_buffers(prompt, bnames);
                 let mut ti = 999999;
                 if sel.len() > 0 {
                     let hit = find_buffer(&bufs, sel.to_string());
