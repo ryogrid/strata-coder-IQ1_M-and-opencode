@@ -119,11 +119,13 @@ Run the editor from a real terminal:
   minibuffer — type a name + Enter to select and switch, Enter alone
   cycles to the next buffer.
 - **Window splitting** — windows form a binary-split tree: `C-x 2`/`C-x 3`
-  split the active window below / right, `C-x o` cycles the active window,
+  split the active window below / right (a full row of `-` / a full column
+  of `|` is drawn between the new cells), `C-x o` cycles the active window,
   `C-x 1` deletes the others (fit to one). All windows show the same
   buffer text; each window keeps its own point, mark and scroll position,
   synced through the active window (the e2e harness exercises per-window
-  points in scenarios s20-s28).
+  points in scenarios s20-s28, and per-window buffers combined with
+  `C-x C-f` + scrolling in s120-s124).
 - **Scrolling** — long files scroll automatically: once the point leaves
   the visible rows (via `C-n`/`C-p` or arrow keys), the whole window
   scrolls one row per keystroke past the edge.

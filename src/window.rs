@@ -25,6 +25,10 @@ pub struct Tree {
 
 pub struct Frame {
     pub leaf: usize,
+    // 0 = window, 1 = horizontal boundary row, 2 = vertical boundary column.
+    // Windows are separated on screen by a boundary line so split-window +
+    // multi-buffer states are visually unambiguous.
+    pub kind: usize,
     pub top: usize,
     pub height: usize,
     pub col: usize,
@@ -59,14 +63,29 @@ impl Tree {
 
     pub fn layout(self: &Tree, slot: usize, top: usize, height: usize, col: usize, width: usize) -> Vec<Frame> {
         if self.kind[slot] == 0 {
-            vec![Frame { leaf: self.which[slot], top: top, height: height, col: col, width: width }]
+            vec![Frame { leaf: self.which[slot], kind: 0, top: top, height: height, col: col, width: width }]
         } else {
             let k = self.which[slot];
             let vertical = self.nodes[k].vertical;
-            if vertical && height >= 2 {
+            if vertical && height >= 3 {
+                // Stacked windows share one boundary row (drawn as '-').
+                let h1 = height / 2;
+                let mut a = self.layout(self.nodes[k].a, top, h1, col, width);
+                a.push(Frame { leaf: 0, kind: 1, top: top + h1, height: 1, col: col, width: width });
+                a.extend(self.layout(self.nodes[k].b, top + h1 + 1, height - h1 - 1, col, width));
+                a
+            } else if vertical && height >= 2 {
+                // Too cramped for a boundary row: fall back to plain split.
                 let h1 = (height + 1) / 2;
                 let mut a = self.layout(self.nodes[k].a, top, h1, col, width);
                 a.extend(self.layout(self.nodes[k].b, top + h1, height - h1, col, width));
+                a
+            } else if width >= 3 {
+                // Side-by-side windows share one boundary column (drawn as '|').
+                let w1 = width / 2;
+                let mut a = self.layout(self.nodes[k].a, top, height, col, w1);
+                a.push(Frame { leaf: 0, kind: 2, top: top, height: height, col: col + w1, width: 1 });
+                a.extend(self.layout(self.nodes[k].b, top, height, col + w1 + 1, width - w1 - 1));
                 a
             } else if width >= 2 {
                 let w1 = (width + 1) / 2;

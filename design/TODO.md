@@ -30,3 +30,4 @@ Progress tracker. One commit per completed task. Check off as done.
 - [x] 14. Incremental search: Ctrl-s reads query chars one at a time (wraps, bell + drop on miss, Ctrl-s repeats, Ctrl-g cancels)
 - [x] 15. Exit confirmation: Ctrl-x Ctrl-c / Ctrl-c ask "Modified buffers exist; exit anyway? (yes|no)" when any buffer is dirty
 - [x] 16. Ctrl-l go-to-line (minibuffer line number, point to line start, clamped)
+- [x] 17. Boundary lines between split windows (`|` column for C-x 3, `-` row for C-x 2) + harness s120-s124 covering C-x 3 / C-x o / C-x C-f (incl. Tab listing cancelled with C-g) / C-n scroll combos (the user-reported sequence, s124)

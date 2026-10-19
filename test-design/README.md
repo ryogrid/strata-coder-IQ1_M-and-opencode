@@ -78,7 +78,7 @@ One script: `test-design/e2e.sh` (bash). Design points:
 | s08 | C-x C-i `/tmp/emur-e2e-insert.txt` Enter (file holds `-INSERTED-`) | text line contains `-INSERTED-This` |
 | s09 | C-x k                                               | status `Killed buffer *demo*`; `@` continuation rows (empty buffer) |
 | s10 | C-x 2                                               | seed text line count == 2 (both windows, shared buffer) |
-| s11 | C-x 3                                               | one line matches `This is the first line +This is the first line` (40-col side-by-side cells) |
+| s11 | C-x 3                                               | one line matches `This is the first line +|This is the first line` (40-col side-by-side cells with a `|` boundary column) |
 | s12 | C-x 2; C-x o; C-a; `X`; C-x o; `Y`                  | content starts `YXThis is the first line` (per-window point: lower window moved its own point, upper kept 0) |
 | s13 | C-x 2; C-x 3; C-x 1                                 | seed text line count == 1 (delete-other-windows) |
 | s14 | C-s `zzz` Enter (incremental: no `z` anywhere, chars dropped) | status unchanged `Buf *demo* 1/3 (0%)` (bell rung, no "not found" message) |
@@ -185,6 +185,11 @@ so Tab-completion prefixes stay unique; cleanup removes the whole dir.
 | s110 | `C-s` `first` Enter; `C-s C-s` repeat; `C-s` `firszt` (`z` dropped) | status `Buf *demo* 1/3 (39%)` every time (same match, wraparound) |
 | s111 | type `X` (dirty), `C-x C-c` → exit prompt; `no` cancels, `yes` exits | prompt `Modified buffers exist; exit anyway? (yes|no)`; status `Cancelled 1/3 (2%)`; `EMU_EXITED 0` |
 | s112 | `C-l` go-to-line `2`, `1`, `99` (clamps), `x` (invalid) | statuses `2/3 (53%)`, `1/3 (0%)`, `3/3 (100%)`, `Invalid line number: x 3/3 (100%)` |
+| s120 | `C-x 3`; `C-x o`; `C-x C-f` s120.py (split inside right column); type F/D/G per window | typing lands in each window's own buffer: `FAAA line` in both right-column cells, `GDThis is the first line` in *demo*; final status `Buf .../s120.py * 1/3 (5%)` |
+| s121 | `C-x 3`; `C-x o`; `C-x b bufB` Enter (creates empty buffer) inside a window | `bufB` lives only in its window (`1/1`, then `100%` after typing); other window keeps `*demo*` (`This is the first line` counted once) |
+| s122 | `C-x 3` + `C-x o` + `C-x C-f` + `C-x o` + `C-x 1` + type `K` | after `C-x 1` the surviving window keeps the ACTIVE window's buffer (`*demo*` typed, file text gone) |
+| s123 | `C-x 2` (assert boundary row `^-+$`); `C-x o`; `C-x C-f` s123.py in lower window; type `S`; `C-x C-s` | `Wrote /tmp/emur-cx/s123.py`; file on disk contains `SAAA line` |
+| s124 | file-arg launch `s124-a.txt`; `C-x 3`; `C-x o`; `C-x C-f` + Tab (dir listing) + `C-g` cancel; retry literal `/tmp/emur-cx/s124-b.txt`; `C-n` ×12; `C-x o` cycle + type X/Y | cancel restores the `Buf .../s124-a.txt 1/31 (0%)` status; retried file opens WITH content under a `-` boundary row; scroll clamps to `13/31 (40%)` (`BIG2 line 13 end` visible, `01` scrolled out); X/Y show in both big1 windows (`YXBIG1 line 01 end`); back to the file window at `13/31 (40%)` (the user's exact sequence) |
 
 ## Running
 
@@ -274,3 +279,21 @@ touched by the harness.
   check. The search now echoes query chars on the minibuffer line only,
   and the single redraw at command end repaints once, like every other
   command.
+- Boundary rendering (s11, s120-s124): every split consumes one row/column
+  for a boundary frame (`-` x width for `C-x 2`, a `|` column for `C-x 3`),
+  so 80x24 gives 40/39-col cells and 11/11-row stacks; fallbacks without a
+  boundary when the pair would be too cramped (`height >= 2`/`width >= 2`).
+  In grep -E patterns the boundary `|` MUST be escaped (`\|`) or it acts as
+  alternation — s11's retargeted pattern is `This is the first line +\|This
+  is the first line`. Boundary rows are asserted as `^-+$` in ERE (grep -E
+  treats `\+` as a LITERAL plus — the quantifier form `^-+$` is BRE-only,
+  where `\|` is alternation but in ERE `\|` is a literal pipe); `draw_all`
+  guard the cursor/status block because boundary frames carry leaf index 0.
+  `expect_lastline` is a literal `[ x = x ]` compare — write `*` and `()`
+  plain there (only `expect`/`grep -qE` needs escaping).
+- The boundary row repaint after `C-x 2` raced `capture-pane` at STEP=0.4
+  reliably enough to fail s123 in 2/2 full runs; `expect` now re-captures
+  up to 3 times (0.3s apart) so existence asserts tolerate a mid-parse/late
+  repaint snapshot. `expect_absent` and `expect_lastline` stay single-shot:
+  retrying an absence would only repeat the same check, and a late status
+  line must never launder a wrong-state assertion.

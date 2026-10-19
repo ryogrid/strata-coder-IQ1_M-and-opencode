@@ -84,6 +84,10 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
 
     let mut f = 0;
     while f < frames.len() {
+        if frames[f].kind > 0 {
+            f += 1; // boundary frames carry no buffer/scroll state
+            continue;
+        }
         let leaf_idx = frames[f].leaf;
         let buf = &bufs[tree.leaves[leaf_idx].buffer];
         let pos = point_pos(buf.text(), tree.leaves[leaf_idx].point);
@@ -109,6 +113,28 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     let mut have_cursor = false;
     let mut i = 0;
     while i < frames.len() {
+        if frames[i].kind == 1 {
+            // Horizontal window boundary: a row of dashes.
+            let mut dash = "".to_string();
+            let mut q = 0;
+            while q < frames[i].width {
+                dash = dash + "-";
+                q += 1;
+            }
+            draw_cell(frames[i].top, frames[i].col, dash, frames[i].width, vec![]);
+            i += 1;
+            continue;
+        }
+        if frames[i].kind == 2 {
+            // Vertical window boundary: a column of bars.
+            let mut rr = 0;
+            while rr < frames[i].height {
+                draw_cell(frames[i].top + rr, frames[i].col, "|".to_string(), 1, vec![]);
+                rr += 1;
+            }
+            i += 1;
+            continue;
+        }
         let leaf_idx = frames[i].leaf;
         let buf = &bufs[tree.leaves[leaf_idx].buffer];
         let lines = split_lines(buf.text());

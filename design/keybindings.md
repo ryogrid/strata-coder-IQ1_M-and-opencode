@@ -65,6 +65,11 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 | `C-x o` | `select-window` (cycle) |
 | `C-x 1` | `delete-other-windows` |
 
+Split cells are separated on screen by one boundary column of `|` (`C-x 3`)
+or one boundary row of `-` (`C-x 2`): each split consumes one column/row,
+given up when the two sides would be too cramped (< 3 cols/rows to spare,
+then the pair splits at >= 2 without a boundary).
+
 ## Search
 
 | Key | Command |

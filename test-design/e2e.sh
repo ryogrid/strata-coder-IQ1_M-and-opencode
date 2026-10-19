@@ -19,7 +19,14 @@ enter() { tmux send-keys -t "$SESSION" Enter; sleep "$STEP"; }
 
 cap() { tmux capture-pane -p -t "$SESSION" 2>/dev/null | perl -pe 's/[ \t]+$//'; }
 
-expect() { cap | grep -qE -- "$1"; }
+expect() {
+  local i
+  for i in 1 2 3; do
+    cap | grep -qE -- "$1" && return 0
+    [ "$i" = 3 ] || sleep 0.3
+  done
+  return 1
+}
 expect_absent() { ! cap | grep -qE -- "$1"; }
 expect_count() { [ "$(cap | grep -cE -- "$1")" = "$2" ]; }
 
@@ -128,7 +135,7 @@ t_s11() {
   start_session s11
   sendb $'\0303'
   local ok=1
-  expect 'This is the first line +This is the first line' || ok=0
+  expect 'This is the first line +\|This is the first line' || ok=0
   report s11 "$ok"
 }
 
@@ -710,13 +717,125 @@ t_s112() {  # C-l go-to-line: minibuffer number moves point to the start of that
   report s112 "$ok"
 }
 
+t_s120() {  # right split + file window inside right column + C-x o cycling; typing lands in each window's own buffer
+  mkdir -p /tmp/emur-cx
+  printf 'AAA line\nBBB line\n' > /tmp/emur-cx/s120.py
+  start_session s120
+  sendb $'\030\063'
+  sendb $'\030\157'
+  sendb $'\030\006' '/tmp/emur-cx/s120.py'
+  enter
+  sendb 'F'
+  local ok=1
+  expect 'FAAA line' || ok=0
+  sendb $'\030\157'
+  sendb 'D'
+  sendb $'\030\157'
+  sendb 'G'
+  expect 'GDThis is the first line' || ok=0
+  sendb $'\030\157'
+  expect_lastline 'Buf /tmp/emur-cx/s120.py * 1/3 (5%)' || ok=0
+  report s120 "$ok"
+}
+
+t_s121() {  # C-x b inside a split window: other windows keep their own buffers
+  start_session s121
+  sendb $'\030\063'
+  sendb $'\030\157'
+  sendb $'\030b' 'bufB'
+  enter
+  local ok=1
+  expect_lastline 'Buf bufB 1/1 (0%)' || ok=0
+  expect_occ 'This is the first line' 1 || ok=0
+  sendb $'\030\157'
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
+  sendb 'L'
+  expect_lastline 'Buf *demo* * 1/3 (2%)' || ok=0
+  sendb $'\030\157'
+  sendb 'M'
+  expect_lastline 'Buf bufB * 1/1 (100%)' || ok=0
+  report s121 "$ok"
+}
+
+t_s122() {  # user-reported sequence: C-x 3 + switch + C-x C-f + cycle + C-x 1 collapse keeps the active window's buffer
+  mkdir -p /tmp/emur-cx
+  printf 'AAA line\nBBB line\n' > /tmp/emur-cx/s122.py
+  start_session s122
+  sendb $'\030\063'
+  sendb $'\030\157'
+  sendb $'\030\006' '/tmp/emur-cx/s122.py'
+  enter
+  sendb $'\030\157'
+  sendb $'\030\061'
+  sendb 'K'
+  local ok=1
+  expect 'KThis is the first line' || ok=0
+  expect_absent 'AAA line' || ok=0
+  expect_lastline 'Buf *demo* * 1/3 (2%)' || ok=0
+  report s122 "$ok"
+}
+
+t_s123() {  # stacked split + open file in lower window + scroll + save from that window
+  mkdir -p /tmp/emur-cx
+  printf 'AAA line\nBBB line\n' > /tmp/emur-cx/s123.py
+  start_session s123
+  sendb $'\030\062'
+  local ok=1
+  expect '^-+$' || ok=0
+  sendb $'\030\157'
+  sendb $'\030\006' '/tmp/emur-cx/s123.py'
+  enter
+  sendb 'S'
+  expect 'SAAA line' || ok=0
+  sendb $'\030\023'
+  expect 'Wrote /tmp/emur-cx/s123\.py' || ok=0
+  grep -q 'SAAA line' /tmp/emur-cx/s123.py || ok=0
+  report s123 "$ok"
+}
+
+t_s124() {  # user's exact sequence: file-arg launch + C-x 3 + C-x o + Tab completion listing cancelled by C-g + literal C-x C-f retry + C-n scroll + C-x o cycling
+  mkdir -p /tmp/emur-cx
+  seq 1 30 | awk '{printf "BIG1 line %02d end\n", $1}' > /tmp/emur-cx/s124-a.txt
+  seq 1 30 | awk '{printf "BIG2 line %02d end\n", $1}' > /tmp/emur-cx/s124-b.txt
+  start_session s124 /tmp/emur-cx/s124-a.txt
+  local ok=1
+  expect '^Buf /tmp/emur-cx/s124-a\.txt 1/31 \(0%\)$' || ok=0
+  sendb $'\030\063'
+  expect 'BIG1 line 01 end +\|BIG1 line 01 end' || ok=0
+  sendb $'\030\157'
+  sendb $'\030\006'
+  tmux send-keys -t "$SESSION" Tab; sleep "$STEP"
+  sendb $'\007'
+  expect_lastline 'Buf /tmp/emur-cx/s124-a.txt 1/31 (0%)' || ok=0
+  sendb $'\030\006' '/tmp/emur-cx/s124-b.txt'
+  enter
+  expect 'BIG1 line 12 end +\|-+$' || ok=0
+  expect 'BIG2 line 01 end' || ok=0
+  expect_lastline 'Buf /tmp/emur-cx/s124-b.txt 1/31 (0%)' || ok=0
+  for n in 1 2 3 4 5 6 7 8 9 10 11 12; do sendb $'\016'; done
+  expect_lastline 'Buf /tmp/emur-cx/s124-b.txt 13/31 (40%)' || ok=0
+  expect 'BIG2 line 13 end' || ok=0
+  expect_absent 'BIG2 line 01 end' || ok=0
+  sendb $'\030\157'
+  expect_lastline 'Buf /tmp/emur-cx/s124-a.txt 1/31 (0%)' || ok=0
+  sendb 'X'
+  expect 'XBIG1 line 01 end +\|XBIG1 line 01 end' || ok=0
+  expect_lastline 'Buf /tmp/emur-cx/s124-a.txt * 1/31 (0%)' || ok=0
+  sendb $'\030\157'
+  sendb 'Y'
+  expect 'YXBIG1 line 01 end' || ok=0
+  sendb $'\030\157'
+  expect_lastline 'Buf /tmp/emur-cx/s124-b.txt 13/31 (40%)' || ok=0
+  report s124 "$ok"
+}
+
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124; do
   "$t"
 done
 
-rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md
+rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"
