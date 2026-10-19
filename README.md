@@ -26,7 +26,10 @@ Repo layout:
 - Terminal requirement: any ANSI-capable terminal (tmux, xterm, a real tty).
   The editor auto-detects its size when stdout is a tty (`termsize`);
   when stdout is redirected it falls back to 24 rows x 80 columns.
-  Input is UTF-8; buffer positions are character indexes.
+  Input is UTF-8; buffer positions are character indexes. The tty is put
+  into raw mode on startup (with `IXON | IXOFF` cleared so Ctrl-S reaches
+  the editor instead of being eaten as XOFF flow control) and restored on
+  quit.
   The end-to-end harness additionally requires GNU `tmux` (3.4 used).
 
 ## Build procedure
@@ -46,25 +49,90 @@ Run the editor from a real terminal:
                                 # filename set, so C-x C-s saves to it
 ```
 
-## Editor usage
+## Editor features
 
-With no arguments, starts a buffer named `*demo*` seeded with two sample
-lines; with an optional file path as the first argument, that file is
-loaded into the buffer (buffer name = path, file name set, unmodified —
-missing files open empty). The bottom row is
-always the status line: `Buf <name> <line>/<total> (<pct>%)` — the trailing
-`<line>/<total>` and `<pct>%` give the point position in the buffer (1-based
-line, percent of buffer length); a trailing `*` before the position marks
-the buffer as modified; when a transient message exists (e.g. `Wrote file`,
-`Cancelled`, `Search string not found: q`) it replaces the status line for
-one frame. All commands are Emacs-style control keys: `C-x` is Ctrl-x, `M-x`
-is Meta/Esc followed by the key. Buffer text is syntax-highlighted by the
-language detected from the buffer/file-name extension: keywords cyan, strings
-magenta, comments green, numbers blue, markdown headings / HTML tags bold
-cyan. Supported extensions: `rs c cpp h js ts go css` (C-family: `//` and
-`/* */` comments), `py sh rb yaml toml` (`#` comments, Python `"""..."""`),
-`json`, `md`/`markdown`, `html`/`xml` (`<!-- -->`); anything else (e.g. `txt`,
-`*demo*`) stays plain.
+- **Buffers** — named buffers backed by a gap buffer; all positions are
+  UTF-8 character indexes; each buffer keeps a point, a mark, a modified
+  flag and a filename. With no arguments a buffer named `*demo*` is seeded
+  with two sample lines; a file-path argument loads that file (buffer name
+  = path, filename set so `C-x C-s` saves to it, buffer unmodified,
+  missing files open empty).
+- **Insertion and editing** — printable chars self-insert (UTF-8 included);
+  `C-j`/`C-m` insert a newline at point; `C-o` inserts a newline after
+  point; `C-t` transposes the chars around point; `C-q` inserts the next
+  key literally (quote).
+- **Movement** — one char, one line, one word (`M-b`/`M-f`), line
+  beginning/end, and buffer bounds (`M-<`/`M->`; raw ttys cannot portably
+  send `C-<`/`C->`, so the buffer-bound commands are Meta-bound).
+- **Delete and kill** — `C-d`/backspace delete around point; `C-k` kills to
+  end of line and stops at the region mark when it is ahead on the line;
+  consecutive `C-k`s accumulate the killed text (newline included) and any
+  other command ends the run; `C-y` pastes the killed text back at point.
+- **Regions** — `C-@` (`C-space`, NUL) sets the mark at point; when the
+  mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the
+  region edge.
+- **Incremental forward search** — `C-s` reads the query one char at a
+  time: each typed char extends the query, moves point to the match end,
+  and the search wraps at the buffer end; a char that matches nowhere
+  rings the bell and is dropped; `C-s` while searching repeats the current
+  query; Enter accepts the current match, `C-g` cancels and restores the
+  original point, ESC ends like Enter.
+- **Backward search** — `C-r` reads the whole query in the bottom-row
+  minibuffer (Enter-terminated); a miss reports
+  `Search string not found: <query>` in the status line.
+- **Go to line** — `C-l` reads a line number in the minibuffer and moves
+  point to the start of that line (1-based, clamped to the last line);
+  empty input cancels, zero or non-digits report
+  `Invalid line number: <input>`.
+- **Minibuffer and Tab completion** — file paths, buffer names and search/
+  goto queries are typed in the bottom-row minibuffer (Tab completion works
+  in path and buffer-name prompts; see Key bindings).
+- **File operations** — `C-x C-f` opens a file in a new split window below
+  (buffer name = path, shown by the status line); `C-x C-s` saves the
+  buffer to its filename; `C-x C-w` writes to a named file and records it,
+  so later `C-x C-s` saves there; `C-x C-i` inserts the contents of a file
+  at point without re-buffering; `C-x k` kills the current buffer (a fresh
+  empty buffer with the same name).
+- **Buffer switching and listing** — `C-x b` switches the active window to
+  a buffer named in the minibuffer (Tab completes names; a new name
+  creates an empty buffer); `C-x C-b` lists all buffer names in the
+  minibuffer — type a name + Enter to select and switch, Enter alone
+  cycles to the next buffer.
+- **Window splitting** — windows form a binary-split tree: `C-x 2`/`C-x 3`
+  split the active window below / right, `C-x o` cycles the active window,
+  `C-x 1` deletes the others (fit to one). All windows show the same
+  buffer text; each window keeps its own point, mark and scroll position,
+  synced through the active window (the e2e harness exercises per-window
+  points in scenarios s20-s28).
+- **Scrolling** — long files scroll automatically: once the point leaves
+  the visible rows (via `C-n`/`C-p` or arrow keys), the whole window
+  scrolls one row per keystroke past the edge.
+- **Status line** — the bottom row always shows `Buf <name> <line>/<total>
+  (<pct>%)`: the point position (1-based line out of total, percent of
+  buffer length); a `*` before the position marks the buffer as modified;
+  a transient message (`Wrote file`, `Cancelled`, `Search string not
+  found: q`, `Invalid line number: x`, …) replaces the status line for one
+  frame.
+- **Quit and exit confirmation** — `C-x C-c`/`C-c` quit; if any buffer has
+  unsaved modifications, the editor first asks `Modified buffers exist;
+  exit anyway? (yes|no)` in the minibuffer and only `yes` (or `y`) exits,
+  anything else cancels; closing stdin / EOF exits unconditionally. Quitting
+  restores the tty settings saved on startup, so the controlling shell keeps
+  working normally (SIGINT, EOL, echo) after the editor exits.
+- **Syntax highlighting** — automatic, no key: the language is detected
+  from the buffer/file-name extension; keywords cyan, strings magenta,
+  comments green, numbers blue, markdown headings and HTML tags bold cyan.
+  Extensions: `rs c cpp h js ts go css` (`//` and `/* */` comments),
+  `py sh rb yaml toml` (`#` comments, Python `"""..."""`), `json`,
+  `md`/`markdown`, `html`/`xml` (`<!-- -->`); anything else (e.g. `txt`,
+  `*demo*`) stays plain. Comments and multi-line strings are matched over
+  the buffer text, not just the visible line.
+- **Rendering robustness** — control characters in buffer content (e.g.
+  `\r` from Windows CRLF files) are rendered as spaces so rows and
+  scrolling never corrupt the screen (the buffer itself is unchanged); the
+  terminal cursor is never parked on the status row.
+
+## Key bindings
 
 | Key | Command |
 |-----|---------|
@@ -98,24 +166,5 @@ cyan. Supported extensions: `rs c cpp h js ts go css` (C-family: `//` and
 | `C-s` | incremental forward search: type the query one char at a time, each char moves point to the end of the (wrapping) match; a char that matches nowhere rings the bell and is dropped; `C-s` repeats the query, Enter accepts, Ctrl-g cancels (point restored) |
 | `C-r` | backward search: whole query typed in the bottom-row minibuffer, ends with Enter |
 | `C-l` | go to line: number typed in the minibuffer, point moves to the start of that line (1-based, clamped to the last line) |
-
-Notes:
-
-- Windows all show the same buffer text; each window keeps its own point
-  (and mark) state, synced through the active window; the e2e harness
-  exercises per-window points (scenarios s20-s28; `mark` is mirrored but
-  not directly exercised yet).
-- Raw ttys cannot portably send `C-<` / `C->`, so buffer bounds are bound
-  to `M-<` / `M->` (Esc then `<` / `>`).
-- `C-s` is only received by the editor because raw mode clears
-  `IXON | IXOFF` (see `src/terminal.rs`); otherwise the tty would eat it
-  as XOFF flow control.
-- Long files scroll: `C-n` / `C-p` (or arrow keys) move the point one
-  line at a time, and once the point leaves the visible rows the whole
-  window scrolls with it (one row per keystroke past the edge).
-- Buffer text may contain control characters (e.g. `\r` from Windows
-  CRLF files); the renderer replaces them with spaces so lines and
-  scrolling never corrupt the screen. The buffer itself is unchanged.
-- Quitting restores the tty settings that were saved on startup, so the
-  controlling shell keeps working normally (SIGINT, EOL, echo) after the
-  editor exits.
+| `Tab` (in a minibuffer prompt) | complete a file path (file prompts) or a buffer name (`C-x b`, `C-x C-b`) |
+| Enter (in a minibuffer prompt) | end the prompt/query (empty input cancels) |
