@@ -27,3 +27,6 @@ Progress tracker. One commit per completed task. Check off as done.
 - [x] 11. Ctrl-x 1 delete-other-windows
 - [x] 12. Search (Ctrl-s/r) + Ctrl-g cancel + quit (Ctrl-x Ctrl-c)
 - [x] 13. Build + smoke test + final commit
+- [x] 14. Incremental search: Ctrl-s reads query chars one at a time (wraps, bell + drop on miss, Ctrl-s repeats, Ctrl-g cancels)
+- [x] 15. Exit confirmation: Ctrl-x Ctrl-c / Ctrl-c ask "Modified buffers exist; exit anyway? (yes|no)" when any buffer is dirty
+- [x] 16. Ctrl-l go-to-line (minibuffer line number, point to line start, clamped)

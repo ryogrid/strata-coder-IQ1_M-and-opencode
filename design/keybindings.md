@@ -9,8 +9,8 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 | printable char | `self-insert` |
 | `C-q` | `self-insert` (quote next key) |
 | `C-g` | `cancel` (abort current command / clear echo) |
-| `C-x C-c` | `quit` |
-| `C-c` | `exit` (quit editor) |
+| `C-x C-c` | `quit` (if any buffer is modified, first asks `Modified buffers exist; exit anyway? (yes|no)` in the minibuffer; only `yes`/`y` exits, anything else cancels) |
+| `C-c` | `exit` (same confirmation; closing stdin / EOF exits unconditionally) |
 
 ## Movement
 
@@ -69,8 +69,14 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 
 | Key | Command |
 |-----|---------|
-| `C-s` | `search-forward` (read query in echo line) |
-| `C-r` | `search-backward` |
+| `C-s` | `search-forward` incremental: each typed char extends the query and moves point to the match end (search wraps at the buffer end); a char that matches nowhere rings the bell and is dropped; `C-s` while searching repeats the query; Enter accepts the current match, Ctrl-g cancels (point restored), ESC ends like Enter |
+| `C-r` | `search-backward` (whole query read in the minibuffer, ends with Enter) |
+
+## Lines
+
+| Key | Command |
+|-----|---------|
+| `C-l` | `goto-line`: minibuffer reads a line number, point moves to the start of that line (1-based, clamped to the last line); empty cancels, zero or non-digits report `Invalid line number: <input>` |
 
 ## Display
 

@@ -29,6 +29,24 @@ fn find_buffer(bufs: &[buffer::Buffer], name: String) -> Vec<usize> {
     return vec![];
 }
 
+// Quit confirmation (Emacs: "Modified buffers exist; exit anyway? (yes|no)"):
+// exiting via Ctrl-c / Ctrl-x Ctrl-c asks in the minibuffer when any buffer
+// has unsaved modifications. EOF (stdin closed / session killed) exits
+// unconditionally. Only "yes" (or "y") exits; anything else cancels.
+fn confirm_exit(bufs: &[buffer::Buffer]) -> bool {
+    let mut dirty = false;
+    let mut j = 0;
+    while j < bufs.len() {
+        if bufs[j].modified { dirty = true; }
+        j += 1;
+    }
+    if !dirty {
+        return true;
+    }
+    let sel = terminal::read_line("Modified buffers exist; exit anyway? (yes|no) ".to_string());
+    return sel == "yes".to_string() || sel == "y".to_string();
+}
+
 fn main() {
     let saved_tty = terminal::save_raw_mode();
     let args: Vec<String> = std::env::args().collect();
@@ -54,14 +72,20 @@ fn main() {
             break; // EOF (no byte read at all)
         }
         let b = rb[0];
-        if b == 0x03 {
-            break; // Ctrl-c
+        if b == 0x03 { // Ctrl-c: quit (asks first when buffers are dirty)
+            if confirm_exit(&bufs) {
+                break;
+            }
+            msg = "Cancelled".to_string();
         }
         let mut moved = false;
         if b == 0x18 {
             let n = terminal::read_byte();
-            if n == 0x03 {
-                break; // Ctrl-x Ctrl-c
+            if n == 0x03 { // Ctrl-x Ctrl-c: quit (asks first when buffers are dirty)
+                if confirm_exit(&bufs) {
+                    break;
+                }
+                msg = "Cancelled".to_string();
             }
             if n == 0x31 { // Ctrl-x 1: delete-other-windows
                 tree.collapse(active);
@@ -182,18 +206,72 @@ fn main() {
                     msg = "".to_string();
                 }
             }
-        } else if b == 0x13 { // Ctrl-s: forward search
-            let q = terminal::read_line("Find: ".to_string());
-            if q.len() > 0 {
-                let hit = bufs[bi].find_forward(&q, bufs[bi].point);
-                if hit.len() > 0 {
-                    bufs[bi].point = hit[0];
-                    msg = "".to_string();
-                } else {
-                    msg = format!("Search string not found: {}", q);
+        } else if b == 0x13 { // Ctrl-s: incremental forward search
+            // Type the query one char at a time; each char extends the search
+            // (wrapping at the buffer end) and moves point to the match end.
+            // A char that matches nowhere rings the bell and is ignored.
+            // C-s while searching repeats the current query. Enter accepts the
+            // current match; Ctrl-g cancels (point restored); ESC also ends.
+            let orig = bufs[bi].point;
+            let mut qs: Vec<char> = vec![];
+            let mut last = orig; // start position of the current match
+            let szs = curses::canvas::get_size();
+            let prow = if szs.rows > 0 { szs.rows } else { 24 };
+            print!("\x1b[{};1H\x1b[2K", prow);
+            print!("{}", "Search: ".to_string());
+            terminal::flush_stdout();
+            let mut cancelled = false;
+            loop {
+                let rb2 = terminal::read_byte_eof();
+                if rb2[1] == 1 { break; } // EOF: keep the current match
+                let c2 = rb2[0];
+                if c2 == 0x0D || c2 == 0x0A || c2 == 0x1b { break; } // accept
+                if c2 == 0x07 { cancelled = true; break; } // Ctrl-g: cancel
+                if c2 == 0x7f { // backspace: drop the last query char
+                    if qs.len() > 0 { qs.pop(); }
+                    if qs.len() > 0 {
+                        let q2 = terminal::str_of(qs.clone());
+                        let hit = bufs[bi].find_forward(&q2, 0);
+                        if hit.len() > 0 {
+                            bufs[bi].point = hit[0];
+                            last = hit[0] - qs.len();
+                        }
+                    }
+                    continue;
                 }
-            } else {
+                let mut attempt: Vec<char> = vec![]; // query to search for
+                let from = last + 1;
+                let mut echo_ch = ' '.to_string(); // char to echo on the search line
+                if c2 == 0x13 { // Ctrl-s while searching: repeat the query
+                    if qs.len() == 0 { continue; } // still waiting for chars
+                    attempt = qs.clone();
+                } else { // a printable char extends the query
+                    let cc = terminal::read_char_from(c2);
+                    attempt = qs.clone();
+                    attempt.push(cc);
+                    echo_ch = cc.to_string();
+                }
+                let q2 = terminal::str_of(attempt.clone());
+                let hit = bufs[bi].find_forward(&q2, from);
+                let hit2 = if hit.len() > 0 { hit } else { bufs[bi].find_forward(&q2, 0) };
+                if hit2.len() > 0 {
+                    qs = attempt;
+                    bufs[bi].point = hit2[0];
+                    last = hit2[0] - qs.len();
+                    if c2 != 0x13 {
+                        print!("{}", echo_ch); // echo the query char
+                    }
+                    terminal::flush_stdout();
+                } else {
+                    print!("{}", "\x07".to_string()); // bell: char ignored
+                    terminal::flush_stdout();
+                }
+            }
+            if cancelled {
+                bufs[bi].point = orig;
                 msg = "Cancelled".to_string();
+            } else {
+                msg = "".to_string();
             }
         } else if b == 0x12 { // Ctrl-r: reverse search
             let q = terminal::read_line("Reverse find: ".to_string());
@@ -266,6 +344,32 @@ fn main() {
             }
         } else if b == 0x05 {
             bufs[bi].end_of_line(); // Ctrl-e
+        } else if b == 0x0c { // Ctrl-l: go-to-line (minibuffer reads a line number)
+            let q = terminal::read_line("Go to line: ".to_string());
+            if q.len() == 0 {
+                msg = "Cancelled".to_string();
+            } else {
+                let mut want_ln: u32 = 0;
+                let mut digits = true;
+                for c in q.chars() {
+                    if c >= '0' && c <= '9' {
+                        want_ln = want_ln * 10 + ((c as u32) - ('0' as u32));
+                    } else {
+                        digits = false;
+                    }
+                }
+                if !digits || want_ln == 0 {
+                    msg = format!("Invalid line number: {}", q);
+                } else {
+                    bufs[bi].beginning_of_buffer();
+                    let mut k: u32 = 1;
+                    while k < want_ln {
+                        bufs[bi].next_line(); // next_line stops at the last line (clamps)
+                        k += 1;
+                    }
+                    msg = "".to_string();
+                }
+            }
         } else if b == 0x11 {
             let n = terminal::read_byte(); // Ctrl-q: quote next key
             bufs[bi].insert_char(terminal::read_char_from(n));

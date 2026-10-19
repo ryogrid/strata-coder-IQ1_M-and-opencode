@@ -70,7 +70,7 @@ cyan. Supported extensions: `rs c cpp h js ts go css` (C-family: `//` and
 |-----|---------|
 | printable char | self-insert |
 | `C-g` | cancel current command / echo |
-| `C-x C-c`, `C-c` | quit (closing stdin / EOF also exits) |
+| `C-x C-c`, `C-c` | quit; if any buffer has unsaved modifications, first asks `Modified buffers exist; exit anyway? (yes|no)` and only `yes` exits (closing stdin / EOF exits unconditionally) |
 | `C-j` / `C-m` | insert newline at point |
 | `C-b` / `C-f` | backward / forward one char |
 | `C-n` / `C-p` | next / previous line |
@@ -95,7 +95,9 @@ cyan. Supported extensions: `rs c cpp h js ts go css` (C-family: `//` and
 | `C-x 2` / `C-x 3` | split window below / right |
 | `C-x o` | select next window (cycles all windows) |
 | `C-x 1` | delete other windows |
-| `C-s` / `C-r` | search forward / backward (query ends with Enter) |
+| `C-s` | incremental forward search: type the query one char at a time, each char moves point to the end of the (wrapping) match; a char that matches nowhere rings the bell and is dropped; `C-s` repeats the query, Enter accepts, Ctrl-g cancels (point restored) |
+| `C-r` | backward search: whole query typed in the bottom-row minibuffer, ends with Enter |
+| `C-l` | go to line: number typed in the minibuffer, point moves to the start of that line (1-based, clamped to the last line) |
 
 Notes:
 

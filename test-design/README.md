@@ -81,8 +81,8 @@ One script: `test-design/e2e.sh` (bash). Design points:
 | s11 | C-x 3                                               | one line matches `This is the first line +This is the first line` (40-col side-by-side cells) |
 | s12 | C-x 2; C-x o; C-a; `X`; C-x o; `Y`                  | content starts `YXThis is the first line` (per-window point: lower window moved its own point, upper kept 0) |
 | s13 | C-x 2; C-x 3; C-x 1                                 | seed text line count == 1 (delete-other-windows) |
-| s14 | C-s `zzz` Enter                                     | status `Search string not found: zzz` |
-| s15 | C-s C-g (cancel inside read_line)                   | status `Cancelled` |
+| s14 | C-s `zzz` Enter (incremental: no `z` anywhere, chars dropped) | status unchanged `Buf *demo* 1/3 (0%)` (bell rung, no "not found" message) |
+| s15 | C-s C-g (cancel during incremental search)          | status `Cancelled` |
 | s16 | Meta-> ; C-r `buffer` Enter                         | status back to `Buf *demo* ` (success clears msg); no "not found" |
 | s17 | C-x C-c                                             | pane shows `EMU_EXITED 0` |
 
@@ -182,6 +182,9 @@ so Tab-completion prefixes stay unique; cleanup removes the whole dir.
 | s103 | type `def f():`, `C-x C-w` to `/tmp/emur-cx/xx.py`, Tab-completed `C-x C-f` reopens in split window | file on disk; status `Buf .../xx.py 1/3 (0%)`; `def` keyword cyan (pattern must escape `()`: ERE group otherwise) |
 | s104 | json opened via argv + `C-x C-i` Tab-completed insert of `ins.json` | both json lines present; numbers blue, strings magenta |
 | s105 | `C-x C-f` opens `h5.md` (split) + `C-x 2` + `C-x 1` | heading keeps bold `ESC[1m`+cyan, inline code magenta after window ops |
+| s110 | `C-s` `first` Enter; `C-s C-s` repeat; `C-s` `firszt` (`z` dropped) | status `Buf *demo* 1/3 (39%)` every time (same match, wraparound) |
+| s111 | type `X` (dirty), `C-x C-c` → exit prompt; `no` cancels, `yes` exits | prompt `Modified buffers exist; exit anyway? (yes|no)`; status `Cancelled 1/3 (2%)`; `EMU_EXITED 0` |
+| s112 | `C-l` go-to-line `2`, `1`, `99` (clamps), `x` (invalid) | statuses `2/3 (53%)`, `1/3 (0%)`, `3/3 (100%)`, `Invalid line number: x 3/3 (100%)` |
 
 ## Running
 
@@ -264,3 +267,10 @@ touched by the harness.
 - `expect` uses `grep -qE`: literal parentheses in expected text (s103's
   `def f():`) MUST be escaped (`def f\(\):`) or `()` becomes an empty ERE
   group and the match silently fails.
+- The incremental `C-s` search must NOT redraw the screen per typed
+  character: tmux `send-keys` delivers the whole query in one event, so
+  several full redraws (clear + repaint) pile up and `capture-pane` can
+  snapshot the pane mid-parse (an all-blank frame), failing the next
+  check. The search now echoes query chars on the minibuffer line only,
+  and the single redraw at command end repaints once, like every other
+  command.

@@ -156,7 +156,7 @@ t_s14() {
   sendb $'\023zzz'
   enter
   local ok=1
-  expect 'Search string not found: zzz' || ok=0
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
   report s14 "$ok"
 }
 
@@ -660,10 +660,59 @@ t_s105() {  # C-x C-f .md (split) + split-below + delete-other-windows keeps md 
   expect_lastline 'Buf /tmp/emur-e2e-h5.md 1/3 (0%)' || ok=0
   report s105 "$ok"
 }
+t_s110() {  # C-s incremental search: chars extend the query; a non-matching char is dropped; C-s repeats; Enter accepts
+  start_session s110
+  sendb $'\023' 'first'
+  enter
+  local ok=1
+  expect_lastline 'Buf *demo* 1/3 (39%)' || ok=0
+  sendb $'\023\023'
+  enter
+  expect_lastline 'Buf *demo* 1/3 (39%)' || ok=0
+  sendb $'\023' 'firs' 'z' 't'
+  enter
+  expect_lastline 'Buf *demo* 1/3 (39%)' || ok=0
+  report s110 "$ok"
+}
+t_s111() {  # C-x C-c with modified content asks for confirmation; "no" cancels, "yes" exits the editor
+  start_session s111
+  sendb 'X'
+  sendb $'\030\003'
+  local ok=1
+  expect_lastline 'Modified buffers exist; exit anyway? (yes|no)' || ok=0
+  sendb 'no'
+  enter
+  expect_lastline 'Cancelled 1/3 (2%)' || ok=0
+  expect 'XThis is the first line' || ok=0
+  sendb $'\030\003'
+  sleep 0.4
+  sendb 'yes'
+  enter
+  sleep 0.6
+  expect 'EMU_EXITED 0' || ok=0
+  report s111 "$ok"
+}
+t_s112() {  # C-l go-to-line: minibuffer number moves point to the start of that line (clamped)
+  start_session s112
+  sendb $'\014' '2'
+  enter
+  local ok=1
+  expect_lastline 'Buf *demo* 2/3 (53%)' || ok=0
+  sendb $'\014' '1'
+  enter
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
+  sendb $'\014' '99'
+  enter
+  expect_lastline 'Buf *demo* 3/3 (100%)' || ok=0
+  sendb $'\014' 'x'
+  enter
+  expect_lastline 'Invalid line number: x 3/3 (100%)' || ok=0
+  report s112 "$ok"
+}
 
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112; do
   "$t"
 done
 
