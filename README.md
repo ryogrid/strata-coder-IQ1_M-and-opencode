@@ -21,7 +21,8 @@ Development machine:
 - Hardware: Ryzen 7 5700X — 8 physical cores / 16 logical threads; main
   memory 64 GB; GPU Radeon RX 9060 XT 16 GB.
 - Local LLM: Strata, running natively on Windows 11 (not inside WSL2); it
-  serves the coding model over a local OpenAI-compatible endpoint.
+  serves the coding model over a local OpenAI-compatible endpoint;
+  context size 128k tokens.
   Version pinned by commit `477ac13cbe8e582c20484871ce459d20d82df09d`,
   tag `v0.1.45`.
 
