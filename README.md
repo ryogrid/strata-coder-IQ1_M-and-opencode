@@ -107,8 +107,9 @@ Run the editor from a real terminal:
 - **Minibuffer and Tab completion** — file paths, buffer names and search/
   goto queries are typed in the bottom-row minibuffer (Tab completion works
   in path and buffer-name prompts; see Key bindings).
-- **File operations** — `C-x C-f` opens a file in a new split window below
-  (buffer name = path, shown by the status line); `C-x C-s` saves the
+- **File operations** — `C-x C-f` opens a file into the active window's
+  buffer (with a lone window it first splits below and shows the file there;
+  buffer name = path, shown by the status line); `C-x C-s` saves the
   buffer to its filename; `C-x C-w` writes to a named file and records it,
   so later `C-x C-s` saves there; `C-x C-i` inserts the contents of a file
   at point without re-buffering; `C-x k` kills the current buffer (a fresh

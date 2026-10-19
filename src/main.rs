@@ -114,20 +114,27 @@ fn main() {
                 }
                 moved = true;
                 msg = "".to_string();
-            } else if n == 0x06 { // Ctrl-x Ctrl-f: open file in a split window below
+            } else if n == 0x06 { // Ctrl-x Ctrl-f: open file; in a lone window split below, in a split tree load into the active window
                 let path = terminal::read_line_files("Find file: ".to_string());
                 if path.len() > 0 {
                     let nb = bufs.len();
                     bufs.push(buffer::Buffer::new(path.to_string(), read_file(path.to_string())));
                     bufs[nb].filename = Some(path.clone());
                     bufs[nb].modified = false;
-                    tree.split(active, true);
-                    let copy_idx = tree.leaves.len() - 1;
-                    tree.leaves[copy_idx].buffer = nb;
-                    tree.leaves[copy_idx].point = 0;
-                    tree.leaves[copy_idx].mark = 0;
-                    tree.leaves[copy_idx].scroll = 0;
-                    active = copy_idx;
+                    if tree.leaves.len() == 1 {
+                        tree.split(active, true);
+                        let copy_idx = tree.leaves.len() - 1;
+                        tree.leaves[copy_idx].buffer = nb;
+                        tree.leaves[copy_idx].point = 0;
+                        tree.leaves[copy_idx].mark = 0;
+                        tree.leaves[copy_idx].scroll = 0;
+                        active = copy_idx;
+                    } else {
+                        tree.leaves[active].buffer = nb;
+                        tree.leaves[active].point = 0;
+                        tree.leaves[active].mark = 0;
+                        tree.leaves[active].scroll = 0;
+                    }
                     moved = true;
                     msg = "".to_string();
                 }

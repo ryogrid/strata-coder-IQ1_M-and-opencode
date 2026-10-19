@@ -717,7 +717,7 @@ t_s112() {  # C-l go-to-line: minibuffer number moves point to the start of that
   report s112 "$ok"
 }
 
-t_s120() {  # right split + file window inside right column + C-x o cycling; typing lands in each window's own buffer
+t_s120() {  # right split + C-x C-f loads file into the ACTIVE window (no further split) + C-x o cycling; typing lands in each window's own buffer
   mkdir -p /tmp/emur-cx
   printf 'AAA line\nBBB line\n' > /tmp/emur-cx/s120.py
   start_session s120
@@ -732,9 +732,8 @@ t_s120() {  # right split + file window inside right column + C-x o cycling; typ
   sendb 'D'
   sendb $'\030\157'
   sendb 'G'
-  expect 'GDThis is the first line' || ok=0
-  sendb $'\030\157'
-  expect_lastline 'Buf /tmp/emur-cx/s120.py * 1/3 (5%)' || ok=0
+  expect 'DThis is the first line +\|FGAAA line' || ok=0
+  expect_lastline 'Buf /tmp/emur-cx/s120.py * 1/3 (10%)' || ok=0
   report s120 "$ok"
 }
 
@@ -809,23 +808,24 @@ t_s124() {  # user's exact sequence: file-arg launch + C-x 3 + C-x o + Tab compl
   expect_lastline 'Buf /tmp/emur-cx/s124-a.txt 1/31 (0%)' || ok=0
   sendb $'\030\006' '/tmp/emur-cx/s124-b.txt'
   enter
-  expect 'BIG1 line 12 end +\|-+$' || ok=0
-  expect 'BIG2 line 01 end' || ok=0
+  expect 'BIG1 line 01 end +\|BIG2 line 01 end' || ok=0
   expect_lastline 'Buf /tmp/emur-cx/s124-b.txt 1/31 (0%)' || ok=0
   for n in 1 2 3 4 5 6 7 8 9 10 11 12; do sendb $'\016'; done
   expect_lastline 'Buf /tmp/emur-cx/s124-b.txt 13/31 (40%)' || ok=0
   expect 'BIG2 line 13 end' || ok=0
-  expect_absent 'BIG2 line 01 end' || ok=0
   sendb $'\030\157'
   expect_lastline 'Buf /tmp/emur-cx/s124-a.txt 1/31 (0%)' || ok=0
   sendb 'X'
-  expect 'XBIG1 line 01 end +\|XBIG1 line 01 end' || ok=0
+  expect 'XBIG1 line 01 end +\|BIG2 line 01 end' || ok=0
   expect_lastline 'Buf /tmp/emur-cx/s124-a.txt * 1/31 (0%)' || ok=0
   sendb $'\030\157'
   sendb 'Y'
-  expect 'YXBIG1 line 01 end' || ok=0
+  expect 'YBIG2 line 13 end' || ok=0
+  expect_lastline 'Buf /tmp/emur-cx/s124-b.txt * 13/31 (40%)' || ok=0
   sendb $'\030\157'
-  expect_lastline 'Buf /tmp/emur-cx/s124-b.txt 13/31 (40%)' || ok=0
+  expect_lastline 'Buf /tmp/emur-cx/s124-a.txt * 1/31 (0%)' || ok=0
+  expect 'XBIG1 line 01 end' || ok=0
+  expect 'YBIG2 line 13 end' || ok=0
   report s124 "$ok"
 }
 

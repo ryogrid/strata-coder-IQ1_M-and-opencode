@@ -185,11 +185,11 @@ so Tab-completion prefixes stay unique; cleanup removes the whole dir.
 | s110 | `C-s` `first` Enter; `C-s C-s` repeat; `C-s` `firszt` (`z` dropped) | status `Buf *demo* 1/3 (39%)` every time (same match, wraparound) |
 | s111 | type `X` (dirty), `C-x C-c` → exit prompt; `no` cancels, `yes` exits | prompt `Modified buffers exist; exit anyway? (yes|no)`; status `Cancelled 1/3 (2%)`; `EMU_EXITED 0` |
 | s112 | `C-l` go-to-line `2`, `1`, `99` (clamps), `x` (invalid) | statuses `2/3 (53%)`, `1/3 (0%)`, `3/3 (100%)`, `Invalid line number: x 3/3 (100%)` |
-| s120 | `C-x 3`; `C-x o`; `C-x C-f` s120.py (split inside right column); type F/D/G per window | typing lands in each window's own buffer: `FAAA line` in both right-column cells, `GDThis is the first line` in *demo*; final status `Buf .../s120.py * 1/3 (5%)` |
+| s120 | `C-x 3`; `C-x o`; `C-x C-f` s120.py (loads into the ACTIVE right window, no further split); type F/D/G per window | `DThis is the first line +\|FGAAA line` side-by-side across the `|` boundary: each window keeps its own buffer; final status `Buf .../s120.py * 1/3 (10%)` |
 | s121 | `C-x 3`; `C-x o`; `C-x b bufB` Enter (creates empty buffer) inside a window | `bufB` lives only in its window (`1/1`, then `100%` after typing); other window keeps `*demo*` (`This is the first line` counted once) |
 | s122 | `C-x 3` + `C-x o` + `C-x C-f` + `C-x o` + `C-x 1` + type `K` | after `C-x 1` the surviving window keeps the ACTIVE window's buffer (`*demo*` typed, file text gone) |
 | s123 | `C-x 2` (assert boundary row `^-+$`); `C-x o`; `C-x C-f` s123.py in lower window; type `S`; `C-x C-s` | `Wrote /tmp/emur-cx/s123.py`; file on disk contains `SAAA line` |
-| s124 | file-arg launch `s124-a.txt`; `C-x 3`; `C-x o`; `C-x C-f` + Tab (dir listing) + `C-g` cancel; retry literal `/tmp/emur-cx/s124-b.txt`; `C-n` ×12; `C-x o` cycle + type X/Y | cancel restores the `Buf .../s124-a.txt 1/31 (0%)` status; retried file opens WITH content under a `-` boundary row; scroll clamps to `13/31 (40%)` (`BIG2 line 13 end` visible, `01` scrolled out); X/Y show in both big1 windows (`YXBIG1 line 01 end`); back to the file window at `13/31 (40%)` (the user's exact sequence) |
+| s124 | file-arg launch `s124-a.txt`; `C-x 3`; `C-x o`; `C-x C-f` + Tab (dir listing) + `C-g` cancel; retry literal `/tmp/emur-cx/s124-b.txt`; `C-n` ×12; `C-x o` cycle + type X/Y | cancel restores the `Buf .../s124-a.txt 1/31 (0%)` status; retried file loads INTO the right window (`BIG1 ... +\|BIG2 ...` side-by-side, no extra split); scroll state `13/31 (40%)`; X lands in the big1 window, Y in the file window (`YBIG2 line 13 end`), statuses track each buffer (the user's exact sequence) |
 
 ## Running
 
