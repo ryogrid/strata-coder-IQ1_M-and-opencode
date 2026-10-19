@@ -3,7 +3,7 @@
 # Design: ../test-design/README.md
 set -u
 BIN="./target/debug/emur"
-STEP=0.3
+STEP=0.4
 FAILED=0
 SESSION=""
 
@@ -563,13 +563,111 @@ t_s94() {  # plain text (.txt): no color codes beyond per-line resets
   report s94 "$ok"
 }
 
+t_s100() {  # C-x C-f opens .rs (split) + highlighting; Tab-completed C-x b back to *demo*; colors persist in the file window
+  printf 'fn main() {\n    // note\n}\n' > /tmp/emur-e2e-h2.rs
+  start_session s100
+  sendb $'\030\006' '/tmp/emur-e2e-h2.rs'
+  enter
+  local ok=1
+  expect_lastline 'Buf /tmp/emur-e2e-h2.rs 1/4 (0%)' || ok=0
+  expect_e '\[36m' || ok=0
+  expect_e '\[32m' || ok=0
+  sendb $'\030b' $'*demo\t'
+  enter
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
+  expect 'This is the first line' || ok=0
+  sendb $'\030b' $'/tmp/emur-e2e-h2\t'
+  enter
+  expect_lastline 'Buf /tmp/emur-e2e-h2.rs 1/4 (0%)' || ok=0
+  expect_e '\[36m' || ok=0
+  expect_e '\[32m' || ok=0
+  report s100 "$ok"
+}
+
+t_s101() {  # two .py files opened (two windows) + buffer-list + Tab-completed buffer switch keeps python coloring
+  mkdir -p /tmp/emur-cx
+  printf 'def a():\n    # A note\n' > /tmp/emur-cx/aa.py
+  printf 'def b():\n    # B note\n' > /tmp/emur-cx/bb.py
+  start_session s101
+  sendb $'\030\006' '/tmp/emur-cx/aa.py'
+  enter
+  sendb $'\030\006' '/tmp/emur-cx/bb.py'
+  enter
+  local ok=1
+  expect_lastline 'Buf /tmp/emur-cx/bb.py 1/3 (0%)' || ok=0
+  sendb $'\030\002'
+  expect 'Buffers: \*demo\* /tmp/emur-cx/aa\.py /tmp/emur-cx/bb\.py' || ok=0
+  enter
+  sendb $'\030b' $'/tmp/emur-cx/a\t'
+  enter
+  expect_lastline 'Buf /tmp/emur-cx/aa.py 1/3 (0%)' || ok=0
+  expect_e '\[36m' || ok=0
+  expect_e '\[32m' || ok=0
+  report s101 "$ok"
+}
+
+t_s102() {  # mark/region + split window + C-k region kill + paste (combined, plain buffer stays colorless)
+  start_session s102
+  sendb 'ABCDEFGHIJ'
+  tmux send-keys -t "$SESSION" C-@; sleep "$STEP"
+  sendb $'\002\002\002' $'\030\062' $'\030\061' $'\013' 'X' $'\031'
+  local ok=1
+  expect 'ABCDEFGXHIJThis is the first line' || ok=0
+  expect_absent_e '3[2456]m' || ok=0
+  report s102 "$ok"
+}
+
+t_s103() {  # C-x C-w writes a .py file, then Tab-completed C-x C-f reopens it in a split window; python keyword colored
+  mkdir -p /tmp/emur-cx
+  start_session s103
+  sendb 'def f():'
+  sendb $'\030\027' $'/tmp/emur-cx/xx.py'
+  enter
+  local ok=1
+  grep -q 'def f()' /tmp/emur-cx/xx.py || ok=0
+  sendb $'\030\006' $'/tmp/emur-cx/x\t'
+  enter
+  expect_lastline 'Buf /tmp/emur-cx/xx.py 1/3 (0%)' || ok=0
+  expect 'def f\(\):This is the first line' || ok=0
+  expect_e '\[36m' || ok=0
+  report s103 "$ok"
+}
+
+t_s104() {  # json opened via argv + C-x C-i Tab-completed insert of another json; strings/numbers stay colored
+  printf '{"a": 1}\n' > /tmp/emur-cx/ins.json
+  printf '{"n": 42, "ok": true}\n' > /tmp/emur-e2e-h4.json
+  start_session s104 /tmp/emur-e2e-h4.json
+  local ok=1
+  sendb $'\030\011' $'/tmp/emur-cx/ins\t'
+  enter
+  expect '{"a": 1}' || ok=0
+  expect '{"n": 42, "ok": true}' || ok=0
+  expect_e '\[34m' || ok=0
+  expect_e '\[35m' || ok=0
+  report s104 "$ok"
+}
+
+t_s105() {  # C-x C-f .md (split) + split-below + delete-other-windows keeps md heading bold and inline code magenta
+  printf '# Title\ntext `code` here\n' > /tmp/emur-e2e-h5.md
+  start_session s105
+  sendb $'\030\006' '/tmp/emur-e2e-h5.md'
+  enter
+  sendb $'\030\062' $'\030\061'
+  local ok=1
+  expect '# Title' || ok=0
+  expect_e '\[1m' || ok=0
+  expect_e '\[35m' || ok=0
+  expect_lastline 'Buf /tmp/emur-e2e-h5.md 1/3 (0%)' || ok=0
+  report s105 "$ok"
+}
+
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105; do
   "$t"
 done
 
-rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt
+rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"

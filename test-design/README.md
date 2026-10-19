@@ -168,6 +168,21 @@ grepping raw SGR sequences (`ESC[<n>m`); `cap` (plain capture) is unchanged.
 | s93 | open `/tmp/emur-e2e-h.md` (`# Heading`, `` `code` ``) | bold `ESC[1m` + cyan on the heading, inline-code span magenta |
 | s94 | open `/tmp/emur-e2e-h.txt` (`plain text 42`) | text renders with NO color codes beyond per-line resets (`ESC[3[2456]m` absent) |
 
+## Combined multi-feature scenarios (s100+)
+
+Each scenario chains several features in one session (windows + highlighting +
+completion + marks/regions + file I/O). Shared fixtures live in `/tmp/emur-cx`
+so Tab-completion prefixes stay unique; cleanup removes the whole dir.
+
+| ID   | Setup                                        | Expected observation |
+|------|----------------------------------------------|----------------------|
+| s100 | C-x C-f opens `/tmp/emur-e2e-h2.rs` (split) then Tab-completed `C-x b` to `*demo*` and back | `.rs` keyword/comment colors (`ESC[36m`/`ESC[32m`) persist in the file window after each switch |
+| s101 | open `aa.py` + `bb.py` (two windows), `C-x C-b` buffer list, Tab-completed `C-x b` back to `aa.py` | list shows all three buffers; python coloring after switch |
+| s102 | type 10 chars, `C-@` mark, move back 3, split/delete windows, `C-k` region kill, insert, `C-y` paste | text `ABCDEFGXHIJ...`; plain buffer emits no color codes |
+| s103 | type `def f():`, `C-x C-w` to `/tmp/emur-cx/xx.py`, Tab-completed `C-x C-f` reopens in split window | file on disk; status `Buf .../xx.py 1/3 (0%)`; `def` keyword cyan (pattern must escape `()`: ERE group otherwise) |
+| s104 | json opened via argv + `C-x C-i` Tab-completed insert of `ins.json` | both json lines present; numbers blue, strings magenta |
+| s105 | `C-x C-f` opens `h5.md` (split) + `C-x 2` + `C-x 1` | heading keeps bold `ESC[1m`+cyan, inline code magenta after window ops |
+
 ## Running
 
 ```
@@ -246,3 +261,6 @@ touched by the harness.
   is captured as `ESC[1m` + `ESC[36m`, so s93 greps both separately.
   `expect_e '\[36m'` prefixes a literal ESC (`$'\033'`) and the escaped
   bracket keeps `[36m` literal for grep -E (an unescaped `[` starts a class).
+- `expect` uses `grep -qE`: literal parentheses in expected text (s103's
+  `def f():`) MUST be escaped (`def f\(\):`) or `()` becomes an empty ERE
+  group and the match silently fails.
