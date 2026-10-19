@@ -19,7 +19,7 @@ Development machine:
 - OS: Windows 11 Pro 25H2, OS Build 26200.9711 (the editor itself runs on
   the WSL2 x86_64 kernel under this Windows host).
 - Hardware: Ryzen 7 5700X — 8 physical cores / 16 logical threads; main
-  memory 64 GB; GPU Radeon RX 9060 XT 16 GB.
+  memory 64 GB; GPU Radeon RX 9060 XT 16 GB; NVMe SSD WD Black SN770 1TB.
 - Local LLM: Strata, running natively on Windows 11 (not inside WSL2); it
   serves the coding model over a local OpenAI-compatible endpoint;
   context size 128k tokens.
