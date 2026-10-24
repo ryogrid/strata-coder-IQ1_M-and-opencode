@@ -1152,11 +1152,30 @@ t_s154() {  # C-k with the mark BEHIND the point kills to end of line (B-3)
   report s154 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154; do
+t_s155() {  # C-x 1 then C-x C-f: the lone window splits below, file in the NEW window
+  printf 'S155 file line\n' > /tmp/emur-e2e-s155.txt
+  start_session s155
+  sendb $'\030\062' # split-below (leaves 0,1)
+  sendb $'\030\061' # C-x 1: compaction leaves exactly ONE leaf (S-3)
+  sendb $'\030\006' '/tmp/emur-e2e-s155.txt'
+  enter
+  local ok=1
+  # The OLD build left a DEAD leaf from the split, so leaves.len() >= 2 and
+  # show_buffer replaced the lone window IN PLACE: no boundary row and the
+  # *demo* text vanished. The documented rule (README): a lone window splits
+  # below and the buffer shows in the NEW window.
+  expect '^-+$' || ok=0
+  expect 'This is the first line' || ok=0
+  expect 'S155 file line' || ok=0
+  expect_lastline 'Buf /tmp/emur-e2e-s155.txt 1/2 (0%)' || ok=0
+  report s155 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154 t_s155; do
   "$t"
 done
 
-rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt /tmp/emur-e2e-pipe-s140.out /tmp/emur-e2e-pipe-s142.out
+rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt /tmp/emur-e2e-pipe-s140.out /tmp/emur-e2e-pipe-s142.out /tmp/emur-e2e-s155.txt
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"

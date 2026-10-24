@@ -360,6 +360,7 @@ mod tests {
         assert!(char_width('\u{1F600}') == 2); // emoji (covered block)
         assert!(char_width('\u{1F680}') == 1); // KNOWN GAP (Design Doc C §2.1)
         assert!(char_width('é') == 1); // latin-1
+        assert!(char_width('\u{FF71}') == 1); // halfwidth katakana: past the FF00..FF60 range
         assert!(char_width('\u{4E00}') == 2); // CJK unified start
         assert!(char_width('\u{33FF}') == 2); // range end of the catch-all
         assert!(char_width('\u{20000}') == 2); // ext. B start
@@ -372,5 +373,35 @@ mod tests {
         assert!(point_pos(&cs, 2) == vec![0, 3]);
         let cs2: Vec<char> = "a\nあ".chars().collect();
         assert!(point_pos(&cs2, 3) == vec![1, 2]);
+    }
+    fn chars(s: &str) -> Vec<char> {
+        s.chars().collect()
+    }
+    #[test]
+    fn split_lines_counts_trailing_empty() {
+        assert!(split_lines(&chars("a\nb\n")) == vec!["a", "b", ""]);
+        assert!(split_lines(&chars("a\nb")) == vec!["a", "b"]);
+        assert!(split_lines(&chars("")) == vec![""]);
+        assert!(split_lines(&chars("\n")) == vec!["", ""]);
+    }
+    #[test]
+    fn line_offsets_count_chars_plus_newline() {
+        assert!(line_offsets(&split_lines(&chars("ab\nc\n"))) == vec![0, 3, 5]);
+        // multibyte chars count as ONE each (char-based, not bytes)
+        assert!(line_offsets(&split_lines(&chars("あb\nx"))) == vec![0, 3]);
+    }
+    #[test]
+    fn point_pos_lines_and_clamp() {
+        let c = chars("ab\nc");
+        assert!(point_pos(&c, 0) == vec![0, 0]);
+        assert!(point_pos(&c, 2) == vec![0, 2]);
+        assert!(point_pos(&c, 3) == vec![1, 0]);
+        assert!(point_pos(&c, 99) == vec![1, 1]); // clamped to the scan end
+        // fullwidth advances 2 cells, combining marks 0 (Design Doc C)
+        let c = chars("あb\nx");
+        assert!(point_pos(&c, 2) == vec![0, 3]);
+        assert!(point_pos(&c, 3) == vec![1, 0]);
+        let c = chars("a\u{300}bc");
+        assert!(point_pos(&c, 3) == vec![0, 2]);
     }
 }

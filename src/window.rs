@@ -175,6 +175,68 @@ impl Tree {
 mod tests {
     use super::*;
     #[test]
+    fn layout_geometry_splits() {
+        // side by side (C-x 3): 80 cols -> left 40, boundary col 40, right 39
+        let mut t = new_tree(0);
+        assert!(t.split(0, false));
+        let f = t.layout(t.root, 0, 10, 0, 80);
+        assert!(f.len() == 3);
+        assert!(f[0].kind == 0 && f[0].col == 0 && f[0].width == 40);
+        assert!(f[1].kind == 2 && f[1].col == 40 && f[1].width == 1);
+        assert!(f[2].kind == 0 && f[2].col == 41 && f[2].width == 39);
+        // stacked (C-x 2): 24 rows -> 12 + boundary row 12 + 11
+        let mut t = new_tree(0);
+        assert!(t.split(0, true));
+        let f = t.layout(t.root, 0, 24, 0, 80);
+        assert!(f.len() == 3);
+        assert!(f[0].kind == 0 && f[0].top == 0 && f[0].height == 12);
+        assert!(f[1].kind == 1 && f[1].top == 12 && f[1].height == 1);
+        assert!(f[2].kind == 0 && f[2].top == 13 && f[2].height == 11);
+        // smallest geometries that still keep a boundary: 1 + row/col + 1
+        let f = t.layout(t.root, 5, 3, 0, 80);
+        assert!(f.len() == 3 && f[0].top == 5 && f[0].height == 1
+            && f[1].kind == 1 && f[1].top == 6
+            && f[2].top == 7 && f[2].height == 1);
+        let mut t = new_tree(0);
+        assert!(t.split(0, false));
+        let f = t.layout(t.root, 0, 5, 9, 3);
+        assert!(f.len() == 3 && f[0].col == 9 && f[0].width == 1
+            && f[1].kind == 2 && f[1].col == 10
+            && f[2].col == 11 && f[2].width == 1);
+    }
+    #[test]
+    fn layout_cramped_falls_back_without_boundary() {
+        // 2 rows: a boundary row would starve one window -> plain split
+        let mut t = new_tree(0);
+        assert!(t.split(0, true));
+        let f = t.layout(t.root, 0, 2, 0, 80);
+        assert!(f.len() == 2 && f.iter().all(|x| x.kind == 0));
+        assert!(f[0].top == 0 && f[0].height == 1 && f[1].top == 1 && f[1].height == 1);
+        // 2 cols: no boundary column
+        let mut t = new_tree(0);
+        assert!(t.split(0, false));
+        let f = t.layout(t.root, 0, 5, 0, 2);
+        assert!(f.len() == 2 && f[0].width == 1 && f[1].col == 1 && f[1].width == 1);
+        // 1 col: unsplittable, both children take the full width
+        let f = t.layout(t.root, 0, 5, 0, 1);
+        assert!(f.len() == 2 && f[0].width == 1 && f[1].col == 0 && f[1].width == 1);
+    }
+    #[test]
+    fn flatten_order_and_find_slot() {
+        // nested splits keep tree order: leaf 0, then the stacked copy split right
+        let mut t = new_tree(0);
+        assert!(t.split(0, true)); // leaves 0,1 stacked
+        assert!(t.split(1, false)); // leaf 1 splits right -> leaf 2
+        assert!(t.flatten() == vec![0, 1, 2]);
+        assert!(t.find_slot(t.root, 2) < t.kind.len());
+        assert!(t.find_slot(t.root, 3) == t.kind.len()); // unknown leaf: not found
+        assert!(!t.split(3, true)); // split on an unknown leaf fails
+        t.collapse(1); // survivor (leaf 1's copy) moves to index 0
+        assert!(t.flatten() == vec![0]);
+        // unknown leaf: tree untouched, the index is echoed back
+        assert!(t.collapse(9) == 9 && t.leaves.len() == 1 && t.kind.len() == 1);
+    }
+    #[test]
     fn collapse_shrinks_to_one_leaf() {
         let mut t = new_tree(3);
         t.leaves[0].point = 5; // non-zero so the 4-field copy is asserted

@@ -41,9 +41,15 @@
 - [x] **H-3**: detect が拡張子の大文字小文字を区別しない(FILE.RS 無装飾)。05 §H-3 / Design Doc B → ASCII 小文字化比較+fizz マトリクステスト(fix #2)
 - [x] **R-1**: clippy 94 件。`cargo clippy --fix` + 手当てで掃除。完了ゲート: `cargo clippy` 警告0行(AGENT.md に clippy ルール追記)。06 §R-1 → 102 件を `cargo clippy --fix`(92 自動)+ 手当て(&String→&str、ループカウンタ→enumerate、checked_div、if let、word_eq 書き直し、`let _ =` 受信、self-insert 2 分岐マージ)で **0 行**。AGENT.md に clippy ゼロ則を追記。e2e 76/76+release スモーク 6/6 PASS(fix #6)
 - [x] **R-2**: e2e が debug のみ。release での代表スモーク追加。06 §R-2 → `test-design/release_smoke.sh`(s02/s103/s110/s112/s140/s141 を release バイナリで実行、ビルド自動、6/6 PASS)。溢れ系 s141 を含む(fix #5)
-- [ ] **R-3**: window/screen の単体テスト追加(buffer=find 系は B-9、highlight は H-8 が担当)。06 §R-3
-  - follow-up(fix #13 ゲート由来):「C-x 1 後に C-x C-f」で単一窓は下分割で新ファイル表示
-    (README 文書規則どおり)を固定する e2e シナリオ追加。window.rs tests に collapse 回收テスト済み
+- [x] **R-3**: window/screen の単体テスト追加(buffer=find 系は B-9、highlight は H-8 が担当)。06 §R-3
+  - window.rs: layout ジオメトリ(C-x 3=左 40/境界 col40/右 39、C-x 2=12+境界行+11)、狭域
+    フォールバック(境界行/列なしの素分割、幅 1 の非分割)、flatten 順序(ネスト分割で 0,1,2)、
+    find_slot 未探索=`kind.len()`、split 未知 leaf=false、collapse 回收(fix #13)
+  - screen.rs: split_lines(末尾空行/case 網羅)、line_offsets(文字数+改行、マルチバイト=1 文字)、
+    point_pos(行送りのリセット、point 越境クランプ、全角 2 マス/結合文字 0)、char_width に半角
+    カタカナ U+FF71=1 を追加
+  - follow-up(fix #13 ゲート由来)完了: e2e s155「C-x 1 後に C-x C-f」で単一窓は下分割で
+    新ファイル表示(README 文書規則)を固定。旧(2311b76 worktree)3/3 FAIL・新 3/3 PASS
 - [x] **R-4**: run.out/smoke.txt/demo.txt 未整理。.gitignore 追記。06 §R-4 → 3 ファイルを .gitignore に追加(fix #5)
 - [x] **D-1**: README:148・keybindings.md:13「EOF 無条件終了」の記述を実装に合わせ修正(Phase 1 の EOF 実装修正と同時に実施、完了記録は当該コミット)。07 §D-1 / Design Doc A → README 本文+キー表+keybindings.md 更新済み(fix #1)
 - [x] **D-2**: design/README.md の "Not implemented" 列表陳腐化(syntax highlighting 等)。07 §D-2 → Implemented 側に highlight/minibuffer 補完/ファイル再利用/検索を追記、Not implemented 側から syntax highlighting を除去し undo 不可の风险注記+「コマンドフレームワーク無し(補完付きプロンプトは実装済)」に更新(fix #11)
@@ -383,7 +389,7 @@
   (/tmp/e2e_run18.out)・release 6/6(/tmp/rs7.out)。ゲート APPROVE(セマンティクス
   行列監査・C-k シナリオに旧 no-op 依存なし確認)。
   (fix #12 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #13(このコミット)**: S-3(collapse で tree 配列を再構築し compact 化)。
+- 2026-10-25: **fix #13(コミット 2bf6e09)**: S-3(collapse で tree 配列を再構築し compact 化)。
   旧 collapse は leaf/slot/node を push するだけで split→C-x 1 の反復で
   `kind`/`which`/`nodes`/`leaves` が単調増加(リーク)。新 collapse は生き残る
   leaf(=指定 leaf)の内容だけを保って配列を再構築し(root=0、単一 leaf slot、
@@ -401,3 +407,16 @@
   に反していた(新は文書どおり)。この経路の e2e シナリオ追加は R-3 の follow-up
   として記録。
   (fix #13 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #14(このコミット)**: R-3(window/screen 単体テスト)+fix #13 ゲート follow-up。
+  window.rs: layout ジオメトリ(80 列で左 40/境界 col 40/右 39、24 行で 12+境界行+11)、
+  狭域フォールバック(行/列境界なしの素分割、幅 1 は非分割)、flatten ネスト順序、
+  find_slot 未探索=`kind.len()`、split 未知 leaf=false。screen.rs: split_lines(末尾空行)、
+  line_offsets(文字数+改行、マルチバイト=1 文字)、point_pos(行送り/越境クランプ/全角 2/
+  結合 0)、char_width 半角カタカナ U+FF71=1。unit 24→30。e2e s155(C-x 1 後の C-x C-f が
+  単一窓で下分割・新ウィンドウ表示の README 規則、旧=in-place 置換で境界なし):
+  新 3/3 PASS・HEAD~1(2311b76)worktree 3/3 FAIL。フル e2e 84/84・release 6/6 は
+  本コミット前に solo 実行で確認(/tmp/e2e_run20.out・/tmp/rs9.out)。ゲート APPROVE
+  (スロット代数ハンドトレース・分離再現検証済み)。Minor 織り込み済み: collapse 未知
+  leaf=インデッシュ返却+不変アサート、最小境界ジオメトリ(高さ 3=1+行+1、幅 3=1+列+1)、
+  split_lines("\n")=["",""]。
+  (fix #14 のコミットハッシュは次エントリに記載)
