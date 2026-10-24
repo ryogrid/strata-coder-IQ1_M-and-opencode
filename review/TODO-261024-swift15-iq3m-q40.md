@@ -44,12 +44,12 @@
 - [ ] **R-3**: window/screen の単体テスト追加(buffer=find 系は B-9、highlight は H-8 が担当)。06 §R-3
 - [x] **R-4**: run.out/smoke.txt/demo.txt 未整理。.gitignore 追記。06 §R-4 → 3 ファイルを .gitignore に追加(fix #5)
 - [x] **D-1**: README:148・keybindings.md:13「EOF 無条件終了」の記述を実装に合わせ修正(Phase 1 の EOF 実装修正と同時に実施、完了記録は当該コミット)。07 §D-1 / Design Doc A → README 本文+キー表+keybindings.md 更新済み(fix #1)
-- [ ] **D-2**: design/README.md の "Not implemented" 列表陳腐化(syntax highlighting 等)。07 §D-2
-- [ ] **D-3**: architecture.md の4点(gap O(1)/keymap tree/curses 描画/status top)を実態に。07 §D-3
-- [ ] **D-4**: README:129「全窓が同一バッファ表示」は C-x b 後誤り。07 §D-4
-- [ ] **D-5**: design/keybindings.md の C-</C-> → M-</M->。07 §D-5
-- [ ] **D-7**: README:47 の termsize 表記(直接依存は curses)。07 §D-7
-- [ ] **D-10**: README 環境記述(モデルID)が opencode.json と二重管理。分離検討。07 §D-10
+- [x] **D-2**: design/README.md の "Not implemented" 列表陳腐化(syntax highlighting 等)。07 §D-2 → Implemented 側に highlight/minibuffer 補完/ファイル再利用/検索を追記、Not implemented 側から syntax highlighting を除去し undo 不可の风险注記+「コマンドフレームワーク無し(補完付きプロンプトは実装済)」に更新(fix #11)
+- [x] **D-3**: architecture.md の4点(gap O(1)/keymap tree/curses 描画/status top)を実態に。07 §D-3 → 「Current implementation (as-built)」節を追加し4点(挿入 O(n)/if-else 連鎖/ANSI 手書き描画+curses は size のみ/ステータス最下行)を明記、gap 本文に相互参照(fix #11)
+- [x] **D-4**: README:129「全窓が同一バッファ表示」は C-x b 後誤り。07 §D-4 → 「分割直後は同一/`C-x b`・`C-x C-f` はアクティブ窓のみ切替・kill 時は共有窓全てで空になる」に書き換え(fix #11)
+- [x] **D-5**: design/keybindings.md の C-</C-> → M-</M->。07 §D-5 → 行を置換(raw tty 注記つき)(fix #11)
+- [x] **D-7**: README:47 の termsize 表記(直接依存は curses)。07 §D-7 → `curses::canvas::get_size`・直接依存=curses(termsize は推移)と明記。Toolchain 行の「curses (ANSI canvas)」も「size クエリのみ、描画は ANSI 手書き」に修正(fix #11)
+- [x] **D-10**: README 環境記述(モデルID)が opencode.json と二重管理。分離検討。07 §D-10 → 揮発スナップショット(マシン/HW/ローカル LLM/エージェント)を docs/dev-env.md(日付付き)へ移設、README は不変のビルド事実+ポインタのみ、モデル ID の単一源=opencode.json を明記(fix #11)
 
 ## Phase 3: 低優先(Low)
 
@@ -343,7 +343,7 @@
   ゲート(APPROVE-WITH-CHANGES)Major-1/2・Minor-1/2 すべて適用(コード=列直接渡し、
   Doc=分離力の降格と s152 追加、README=表外結合記号の条項)。性能 0.073-0.088s(451KB debug)。
   (fix #8 のコミットハッシュは次エントリに記載)
-- 2026-10-24: **fix #9(このコミット)**: M-15(alias キル後の stale leaf-point で panic)。
+- 2026-10-24: **fix #9(コミット 002984f)**: M-15(alias キル後の stale leaf-point で panic)。
   二層対策: (1) `C-x k` はkill 対象 buffer を指す**全 leaf** の point/mark/scroll を 0 化
   (C-x 2/3・M-6 再利用で作れる alias を網羅)、(2) main ループ先頭の leaf→buffer 書写しで
   point/mark を `buf.len()` にクランプ(in-place 置換の他の経路にも効く安全層)。
@@ -365,3 +365,10 @@
   e2e s112/s141 単体 2/2、clippy 0・test 22/22。break 適用後のフル e2e 82/82 solo
   (/tmp/e2e_run17.out)+release スモーク 6/6(/tmp/rs6.out)。
   (fix #10 のコミットハッシュは次エントリに記載)
+- 2026-10-24: **fix #11(このコミット)**: docs クラスタ D-2/D-3/D-4/D-5/D-7/D-10。
+  design/README.md=実装済み一覧更新+undo 风险注記+curses 注記。architecture.md=
+  「Current implementation (as-built)」節で4点の乖離を明記(gap 本文に相互参照)。
+  README=窓表示セマンティクス(D-4)/termsize→curses(D-7)/環境節を docs/dev-env.md へ
+  移設しポインタ化+モデル ID 単一源=opencode.json(D-10)。design/keybindings.md=
+  M-</M->(D-5)。ドキュメントのみ(コード不変)、cargo build/clippy 警告ゼロ確認。
+  (fix #11 のコミットハッシュは次エントリに記載)

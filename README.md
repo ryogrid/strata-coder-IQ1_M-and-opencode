@@ -14,29 +14,16 @@ Repo layout:
 
 ## Development environment
 
-Development machine:
-
-- OS: Windows 11 Pro 25H2, OS Build 26200.9711 (the editor itself runs on
-  the WSL2 x86_64 kernel under this Windows host).
-- Hardware: Ryzen 7 5700X — 8 physical cores / 16 logical threads; main
-  memory 64 GB; GPU Radeon RX 9060 XT 16 GB; NVMe SSD WD Black SN770 1TB.
-- Local LLM: Strata, running natively on Windows 11 (not inside WSL2); it
-  serves the coding model over a local OpenAI-compatible endpoint;
-  context size 128k tokens.
-  Version pinned by commit `477ac13cbe8e582c20484871ce459d20d82df09d`,
-  tag `v0.1.45`.
-
-Coding agent:
-
-- OpenCode v1.18.31, model **Qwen3.8-Flash-Next Coder IQ1_M (Strata)**
-  (model ID `strata/qwen3.8-flash-next-coder`, served by Strata;
-  configured in `opencode.json` under the display name
-  "Qwen3.8-Flash-Next Coder (Strata)").
+Stable build facts only. The volatile development snapshot (host
+machine, hardware, local model serving, coding-agent versions) lives in
+[docs/dev-env.md](docs/dev-env.md); model IDs are managed solely in
+`opencode.json` and are not duplicated here.
 
 Toolchain:
 
 - Rust: `rustc 1.99.1`, `cargo 1.99.1`, language edition 2021.
-  Dependencies: `curses` 0.1.0 (ANSI canvas), `termios` 0.3.3 (POSIX tty).
+  Direct dependencies: `curses` 0.1.0 (terminal SIZE query only —
+  rendering is hand-written ANSI escapes), `termios` 0.3.3 (POSIX tty).
 
 Runtime requirements:
 
@@ -44,7 +31,9 @@ Runtime requirements:
   `termios`/POSIX tty ioctls are used directly; macOS/Windows are not
   supported (the Windows 11 host develops and runs the editor via WSL2).
 - Terminal: any ANSI-capable terminal (tmux, xterm, a real tty).
-  The editor auto-detects its size when stdout is a tty (`termsize`);
+  The editor auto-detects its size when stdout is a tty
+  (`curses::canvas::get_size`; the direct dependency is `curses` —
+  `termsize` is only a transitive one);
   when stdout is redirected it falls back to 24 rows x 80 columns.
   Input is UTF-8; buffer positions are character indexes. The tty is put
   into raw mode on startup (with `IXON | IXOFF` cleared so Ctrl-S reaches
@@ -149,9 +138,12 @@ Run the editor from a real terminal:
 - **Window splitting** — windows form a binary-split tree: `C-x 2`/`C-x 3`
   split the active window below / right (a full row of `-` / a full column
   of `|` is drawn between the new cells), `C-x o` cycles the active window,
-  `C-x 1` deletes the others (fit to one). All windows show the same
-  buffer text; each window keeps its own point, mark and scroll position,
-  synced through the active window (the e2e harness exercises per-window
+  `C-x 1` deletes the others (fit to one). Right after a split all windows
+  show the SAME buffer; `C-x b` and `C-x C-f` switch the buffer of the
+  ACTIVE window only, so from then on windows can show different buffers
+  (killing a buffer shown by several windows empties it in all of them).
+  Each window keeps its own point, mark and scroll position, synced
+  through the active window (the e2e harness exercises per-window
   points in scenarios s20-s28, and per-window buffers combined with
   `C-x C-f` + scrolling in s120-s124).
 - **Scrolling** — long files scroll automatically: once the point leaves

@@ -7,7 +7,8 @@
 A buffer is the editable text for one file. It is backed by a **gap buffer**,
 the same conceptual structure Emacs uses: a contiguous array of `char` with a
 movable empty gap around the cursor, giving O(1) amortized insert/delete near
-the cursor.
+the cursor. (In this Rust implementation insertion is O(n) - see "Current
+implementation" at the end.)
 
 ```
 [ chars ... | gap | ... chars ]
@@ -68,3 +69,23 @@ small keymap tree resolves byte sequences:
 2. Resolve to an interactive command.
 3. Mutate buffers/windows.
 4. Redraw.
+
+## Current implementation (as-built)
+
+The sections above describe the target design. Where the shipped code
+deviates (measured against `src/` as of 2026-10):
+
+- **Gap buffer insert is O(n)**, not amortized O(1): the gap is a
+  `Vec<char>` region and insertions memmove the tail
+  (`buffer.rs`; analysis `review/01-buffer.md` B-1). The gap itself is
+  real (no per-insert reallocation at the gap).
+- **Key dispatch is a flat if-else chain**, not a keymap tree:
+  `main.rs` reads a byte (plus prefix byte after `Ctrl-x`, plus `ESC [`
+  arrow sequences) and walks `if/else if` comparisons.
+- **Rendering is hand-written ANSI escape sequences** printed via
+  `print!` (`screen.rs`, `terminal.rs`). `curses` is used ONLY for the
+  terminal size query (`curses::canvas::get_size`); with stdout
+  redirected the fallback is 24x80.
+- **The status/echo line is at the BOTTOM row**, not the top: the
+  `Buf <name> <line>/<total> (<pct>%)` status and the minibuffer
+  prompts share the last screen row.

@@ -24,8 +24,8 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 | `C-e` | `end-of-line` |
 | `M-b` | `backward-word` |
 | `M-f` | `forward-word` |
-| `C-<` | `beginning-of-buffer` |
-| `C->` | `end-of-buffer` |
+| `M-<` | `beginning-of-buffer` (raw ttys cannot portably send `C-<`) |
+| `M->` | `end-of-buffer` (raw ttys cannot portably send `C->`) |
 | `C-d` | `delete-forward` |
 | `DEL` (backspace) | `delete-backward` |
 
