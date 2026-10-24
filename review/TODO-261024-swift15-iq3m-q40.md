@@ -34,7 +34,7 @@
 - [x] **M-8**: C-x C-w が書き出し失敗後も filename を設定。成功時のみ設定。02 §M-8 → 成功時のみバインド(失敗時 C-x C-s は "No file name" 経路)。e2e s146(fix #4)
 - [x] **M-9**: read_file が全エラーを無言(空表示)。開けない時のステータスメッセージ。02 §M-9 → `Result<String,String>` 化で argv/C-x C-f/C-x C-i が `Failed to open <path>: <errno>` を表示。argv 失敗時 filename 未バインド(C-x C-s が元ファイルを上書きしない)。e2e s147(fix #4)
 - [ ] **M-10**: C-l が next_line を行数回繰り返す O(n×行長)。1回スキャンへ。02 §M-10
-- [ ] **S-2**: 全角(CJK)を幅1として扱う。セル数基準化。03 §S-2 / Design Doc C
+- [x] **S-2**: 全角(CJK)を幅1として扱う。セル数基準化。03 §S-2 / Design Doc C → `char_width`(screen.rs、幅表の単一源)を導入し、`draw_cell` の打切り/パディングと `point_pos`(=カーソル列)をセル基準化。e2e s149/s150(fix #8)
 - [ ] **S-3**: split/collapse で tree のスロットが単調増加(未回收)。03 §S-3
 - [x] **T-4**: read(2) エラーを EOF と同一視。Err では再試行ループとし Ok(0) をもって EOF とする(std が EINTR を再試行する事実を確認したらコメントで明文化)。04 §T-4 / Design Doc A → 再試行ループ実装。実測: std の StdinLock::read は EINTR を自動再試行しない(Err(Interrupted) を返す)ため explicit ループが本体。コメント明記済み(fix #1)
 - [x] **H-2**: Rust のライフタイム `'a` を文字列として誤色。lang1 の `'` 処理改善。05 §H-2 / Design Doc B → 3条件(同一行閉じ/j>=i+2/内容が string 的)採用。フィクスチャ `fn f<'de>(x: &'de str) {}` をテストで固定(fix #2)
@@ -72,7 +72,7 @@
 - [ ] **S-12**: レイアウト重なりデジェネレートのコメント。03 §S-12
 - [ ] **T-5**: fd0 固定の設計注記(stdin 非 tty で raw mode なし)。04 §T-5
 - [ ] **T-6**: Tab 補完 0 候補時に bell。04 §T-6
-- [ ] **T-7**: list_width/cand_at の当たり判定が文字数基準(CJK 候補でズレ)。セル数基準へ(Design Doc C と同時)。04 §T-7
+- [x] **T-7**: list_width/cand_at の当たり判定が文字数基準(CJK 候補でズレ)。セル数基準へ(Design Doc C と同時)。04 §T-7 → `cells_of` 追加、`list_width`/`cand_at` はセル合計、`read_line_c` の全 print!(キャレット配置/erase)は `caret_col`(二重単位の変換点を単関数に集約)経由へ。e2e s151(fix #8)
 - [ ] **T-8**: file_candidates: ディレクトリ末尾 `/`、ソート、`~` 展開。04 §T-8
 - [ ] **T-9**: VMIN/VTIME 明示設定。04 §T-9
 - [ ] **T-11**: print+flush 出力ヘルパー集約。04 §T-11
@@ -230,6 +230,56 @@
   置換したアサート(左窓 2 行+境界列 glue 行+ダッシュ行、3 回ポーリング)は
   単体 3/3 安定。
 
+- **実測レイアウトはコード算術より強い(fix #8/s150)**: Doc C もゲートレビューも
+  80 列の左右分割を「左 39+境界+右 40」と想定したが、`layout()` は
+  `w1 = width / 2` = 左 **40** セル/境界列 40/右 39 が実測(tmux capture で
+  境界の直前が あ×20=40 セルと確認)。s150 は「あ×20[|]」+「あ×21 の不在」に
+  修正し、分離は右窓の連係長(旧=30 連、新=19)で成立。**新しいアサートは
+ pane 実キャプチャから導出する**こと(想定計算で書くと自分もゲートも同じ穴を踏む)。
+- **bash に NUL は送れない**: `sendb $'\000'` は**空文字列**(bash の文字列に
+  NUL は存在不能)。e2e で `C-@`(mark)を送るには tmux の名前付きキー
+  `tmux send-keys -t "$SESSION" C-@` を使う(bash heredoc 経由の printf は
+  パイプ repro でなら可、python pty でも `b"\x00"` で可)。
+- **C-b は region clamp で mark まで跳ぶ(仕様)**: `backward_char` は
+  「mark が現行行にあれば mark 位置で停止」。ファイル起動直後は mark=0 なので
+  point 2 から C-b 1 回で 0 に飛ぶ(1 文字ずつではない)。1 移動のテストは
+  先に `C-@` で mark を point に同期してから。**tmux send-keys -l は制御
+  バイトを複製しない**(od で 1 バイト確認済み)— 「C-b が 2 動く」は
+  全てこの clamp が原因で、バグでも tmux の癖でもない。
+- **read_dir の候補順は非決定**: s151 の Tab 候補は実測で a→i の順(a.txt が
+  後ろ)。候補の当たり判定テストは期待値をファイル名でハードコードせず、
+  **pane のエコー行から先頭候補を awk で抽出**して照合する。
+- **raw モードのキー挙動追跡は python pty.fork が最速確定**: strace は
+  ptrace 不可で使えない環境。pty で送信→ストリーム内の最終
+  `\x1b[row;col]H` を正規表現抽出すればカーソル座標が 0.5s で読める
+  (tmux capture より遥かに速い)。tmux 再現と食い違うときのリトマスに。
+- **Doc C ゲートレビューの実効(fix #8)**: 候補エコーが basename ではなく
+  **フルパス**であることを見逃すと s151 の打鍵数が根本から誤った
+  (C-b×16 仮定 → 正 44)。数式(入力 16 セル/lw=46 セル/cand スパン
+  [18,39])をゲートが再計算して修正させた。ドキュメントの算術は
+  ゲートで再検算させる価値がある。
+
+- **幅 0 文字は「セル-文字」減算を壊す(fix #8 ゲート Major-1)**: `cells_of(x) >= len(x)`
+  は幅 0(結合記号)の存在で崩れる。`plen_c + cells_of(&out[..cur]) - cur` の別名演算は
+  debug ビルドで panic(exit 101)、release で巨大列数の ESC(エコー破損)。実測 repro:
+  Find-file で U+0301×13 + Backspace。**セル算術は足算だけの関数(caret_col)に寄せる**
+  のが正(fix #8 で echo_tail はキャレット・セル列を直接受ける)。pty repro で修正後に
+  panic 消失を確認。
+- **Doc の「分離」主張は旧ビルド実測が必須(fix #8 ゲート Major-2)**: s150 の
+  「21 連が残り FAIL」は新ビルド capture からの**推論**で、旧ビルドの pane は
+  新と同一(境界フレームと右窓フレームが左窓の溢れを上書き、右窓溢れは pane 端で
+  欠落)。旧 HEAD の git worktree を /tmp に作ってビルドし、同じ入力で比較して
+  初めて主張が確定する(worktree add → cargo build → tmux capture → worktree remove
+  --force)。s150 は回帰ガードに降格し、分離は s149/s151/s152 が担う。
+- **可視化できない溢れと可視化される溢れ**: 単一窓では溢れは次の行の自フレームに
+  隠される。分割後の 2 行目(左窓描画**後**に右窓 1 行目の自動ラップが落下)が
+  分離点になる(frames 順=左→境界→右)。s152 の壊れ pane 実測:
+  「あ×11+空白 10+あ×4+|」(境界が 25 文字目に移動するのが壊れの指紋)。
+- **tmux capture の「20 文字+|」**: 左窓 40 セルは あ×20 が**ぴったり**収まる
+  (19+空白+| ではない)。レイアウトは `w1 = width / 2`(window.rs)で偶数幅は左が
+  1 列多い。行末の空白は capture 時に strip されるので、境界の位置は
+  「直前文字列の長さ」で測る(境界 index=セル幅/2)。
+
 ## 変更履歴
 
 - 2026-10-24: TODO 作成(review/00-07 から整理)。内訳 高8/中26/低32+良好点記録8。
@@ -270,8 +320,26 @@
   Minor drive-by: terminal.rs EOF コメント復元、word_eq を allocation-free zip 版に
   (旧版はキーワード毎 Vec 確保で hot path)、自動修正の産物(`}//` 密着/空 if)掃除。
   word_eq 置換後は unit 16/16+e2e s103/s105(ハイライト実色アサート)+release スモーク 6/6 で検証。
-- 2026-10-24: **fix #7(このコミット)**: M-6(C-x C-f が同一ファイルを毎回新規バッファ化)。
+- 2026-10-24: **fix #7(コミット 0d7d0a4)**: M-6(C-x C-f が同一ファイルを毎回新規バッファ化)。
   既存バッファ(`find_buffer` の名前一致=C-x b と同一基準)を disk 再読込なしで表示。
   表示済み窓では no-op。表示ロジックは `show_buffer` に集約(単窓→分割下/分割木→現窓)。
   e2e s148(編集保持+重複なし)。README/keybindings 記述追加。
-  (fix #7 のコミットハッシュは次エントリに記載)
+- 2026-10-24: Design Doc C 確定(コミット ea3e2b7)。fix #8 ゲートで s151 の算術(候補=フルパス/
+  lw=46 セル/C-b×44)・caret_cells の prompt 相対・echo_tail 別名演算・絵文字未カバーの正直化を反映。
+- 2026-10-24: **fix #8(このコミット)**: S-2/T-7(全角表示幅のセル基準化、Design Doc C)。
+  `screen.rs`: `char_width`(幅 2 の 14 範囲+幅 0 の結合 0x0300-036F+既定 1、単一の幅源)、
+  `draw_cell` の打切り/パディングと `point_pos`(=カーソル列)をセル化(全角は枠内で
+  割り込み描きせず)。`terminal.rs`: `cells_of` 追加、`list_width`/`cand_at` をセル合計、
+  `read_line_c` のキャレット系 print 全 14 箇所を `caret_col`(cur の二重単位=入力内
+  文字添字/候補域セルオフセットの変換点、足算のみ)へ集約。`echo_tail` はキャレット
+  セル列を直接受ける(ゲート Major-1: 旧案 `(plen_c+cells_of(..))-cur` 別名演算は
+  幅 0 文字で usize アンダーフロー→debug panic。列直接渡しが正)。README に CJK 描画
+  段落(近似表の穴/絵文字未カバー/表外結合記号=1/右端キャレット)。unit +6(幅
+  マトリクス/point_pos セル/cells_of/list_width/cand_at キャレット 12 判別/caret_col
+  単位+結合記号のアンダーフロー回帰)、e2e +4: s149(カーソル列 0→2→4、C-@ 後 C-b→2)、
+  s150(左窓 40 セル=あ×20+境界;ゲート実測で旧ビルドも通る=回帰ガード)、s151(C-b×44
+  で先頭候補セル着地;read_dir 順非決定に pane から cand1 抽出)、s152(2 行目の溢れ
+  破壊=分離: 旧は約 11 文字+空白+4 文字に壊れ/新は健全、旧 worktree ビルドで実測)。
+  ゲート(APPROVE-WITH-CHANGES)Major-1/2・Minor-1/2 すべて適用(コード=列直接渡し、
+  Doc=分離力の降格と s152 追加、README=表外結合記号の条項)。性能 0.073-0.088s(451KB debug)。
+  (fix #8 のコミットハッシュは次エントリに記載)

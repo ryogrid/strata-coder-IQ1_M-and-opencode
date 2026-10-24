@@ -1044,7 +1044,84 @@ t_s148() {  # C-x C-f reuses an existing buffer for the same file (M-6)
   report s148 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148; do
+t_s149() {  # cursor parks at DISPLAY CELLS over fullwidth text (S-2)
+  curx() { tmux display-message -p -t "$SESSION" '#{cursor_x}' 2>/dev/null; }
+  printf 'あいう\n' > /tmp/emur-e2e-cjk1.txt
+  start_session s149 /tmp/emur-e2e-cjk1.txt
+  local ok=1
+  [ "$(curx)" = "0" ] || ok=0
+  sendb $'\006'
+  [ "$(curx)" = "2" ] || ok=0
+  sendb $'\006'
+  [ "$(curx)" = "4" ] || ok=0
+  # C-@ syncs mark to point: backward_char's documented region clamp
+  # (mark on this line stops AT the mark) would otherwise jump 2->0.
+  # NUL cannot go through send-keys -l (bash strings can't carry it);
+  # use tmux's named key C-@.
+  tmux send-keys -t "$SESSION" C-@; sleep "$STEP"
+  sendb $'\002'
+  [ "$(curx)" = "2" ] || ok=0
+  report s149 "$ok"
+}
+
+t_s150() {  # split-window boundary stays aligned over a 30x fullwidth line (S-2)
+  python3 -c "print('あ' * 30)" > /tmp/emur-e2e-cjk2.txt
+  start_session s150 /tmp/emur-e2e-cjk2.txt
+  sendb $'\030\063'
+  local ok=1
+  # Layout: left window = width/2 = 40 cells (boundary '|' at col 40, right 39).
+  # The cell-based build draws exactly 20 あ (40 cells, no pad) before '|'.
+  # Discriminating assert: the OLD char-count build drew all 30 chars (60
+  # cells) in BOTH windows -> a 21-char run survives in the right window;
+  # the new build caps runs at 20 (left) / 19 (right).
+  expect "$(printf 'あ%.0s' {1..20})[|]" || ok=0
+  expect_absent "$(printf 'あ%.0s' {1..21})" || ok=0
+  report s150 "$ok"
+}
+
+t_s151() {  # Enter-on-candidate caret math in CELLS with CJK input (T-7)
+  printf 'A' > '/tmp/emur-e2e-あa.txt'
+  printf 'I' > '/tmp/emur-e2e-あi.txt'
+  start_session s151
+  sendb $'\030\006' '/tmp/emur-e2e-あ'
+  sendb $'\t'
+  local ok=1
+  # Design Doc C s151 math (prompt-relative, CELLS): input 15 chars = 16
+  # cells; candidates are FULL paths, 21 cells each; lw = 2+22+22 = 46;
+  # caret after Tab = cur 15+46 = 61. Cand1 spans cells [18, 39]: target
+  # cur = 15+2 = 17 -> 44 x C-b. The old char-based build lands cur at 15
+  # (input end) with the same presses -> cand_at misses -> "Failed to
+  # open" (assertion discriminates).
+  # read_dir order is arbitrary (observed: a/i swapped), so the expected
+  # buffer is the FIRST ECHOED CANDIDATE, extracted from the prompt row.
+  local cand1
+  cand1=$(cap | tail -1 | awk '{print $4}')
+  [ -n "$cand1" ] || ok=0
+  for i in $(seq 1 44); do sendb $'\002'; done
+  enter
+  expect_lastline "Buf $cand1 1/1 (0%)" || ok=0
+  report s151 "$ok"
+}
+
+t_s152() {  # old build's row-1 right-window overflow wraps and smashes row 2 (S-2 isolation)
+  python3 -c "print(('あ' * 30 + chr(10)) * 30)" > /tmp/emur-e2e-cjk3.txt
+  start_session s152 /tmp/emur-e2e-cjk3.txt
+  sendb $'\030\063'
+  local ok=1
+  # Right window (39 cells): the OLD char-count build draws 30 chars + pad
+  # = 69 cols from col 41 -> auto-wrap at the 80-col pane edge; the wrapped
+  # tail lands on screen row 2 AFTER the left window's row 2 was drawn
+  # (frames order left->boundary->right), smashing it. The NEW cell-based
+  # build truncates: row 2 left window = 20 chars (40 cells, 0 pad) + '|'
+  # at col 40 (the 19 chars + pad arithmetic belongs to the right window).
+  # (Design Doc C s152; old-build FAIL verified by the fix #8 gate review.)
+  local row2
+  row2=$(cap | sed -n '2p')
+  echo "$row2" | grep -q "$(printf 'あ%.0s' {1..20})[|]" || ok=0
+  report s152 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152; do
   "$t"
 done
 

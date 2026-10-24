@@ -279,30 +279,44 @@ pub fn file_candidates(input: String) -> Vec<String> {
 }
 
 // Echo width of a candidate list: the two separator spaces plus every
-// candidate followed by one space (the format echoed by Tab).
+// candidate followed by one space (the format echoed by Tab), in DISPLAY
+// CELLS (Design Doc C / T-7: fullwidth chars occupy 2 terminal columns).
 pub fn list_width(list: Vec<String>) -> usize {
     let mut w = 0;
     if !list.is_empty() {
         w = 2;
         let mut j = 0;
         while j < list.len() {
-            w += chars_of(list[j].clone()).len() + 1;
+            w += cells_of(&chars_of(list[j].clone())) + 1;
             j += 1;
         }
     }
     w
 }
 
+// Sum of display cells for a char slice (Design Doc C). char_width is the
+// single width source (screen.rs); echo math goes through here.
+pub fn cells_of(s: &[char]) -> usize {
+    let mut w = 0;
+    let mut k = 0;
+    while k < s.len() {
+        w += super::screen::char_width(s[k]);
+        k += 1;
+    }
+    w
+}
+
 // The candidate whose echoed span covers the cursor position cur in the
-// echo area (input of inp chars, then "  cand1 cand2 ... "). Spans are
-// inclusive caret ranges: the caret right before a candidate's first char
-// and right after its last char both count as on it; the separator spaces
-// between candidates are not on any candidate. "" when on none.
+// echo area (input of inp CELLS, then "  cand1 cand2 ... ", caret_cells
+// CELLS from the prompt start). Spans are inclusive caret ranges in CELLS:
+// the caret right before a candidate's first char and right after its last
+// char both count as on it; the separator spaces between candidates are
+// not on any candidate. "" when on none.
 pub fn cand_at(list: Vec<String>, inp: usize, cur: usize) -> String {
     let mut s = inp + 2;
     let mut j = 0;
     while j < list.len() {
-        let l = chars_of(list[j].clone()).len();
+        let l = cells_of(&chars_of(list[j].clone()));
         if cur >= s && cur <= s + l {
             return list[j].clone();
         }
@@ -313,19 +327,38 @@ pub fn cand_at(list: Vec<String>, inp: usize, cur: usize) -> String {
 }
 
 // Park the real terminal cursor at echo-column cur of the minibuffer row
-// (prompt width plen chars, 1-based screen row row).
+// (base column offset plen CELLS, 1-based screen row row).
 fn echo_goto(row: usize, plen: usize, cur: usize) {
     print!("\x1b[{};{}H", row, plen + cur + 1);
 }
 
-// Erase from echo-column cur to the end of the row, then echo the input
-// tail out[cur..]; leaves the real cursor after the printed tail.
-fn echo_tail(row: usize, plen: usize, cur: usize, out: &[char]) {
-    print!("\x1b[{};{}H\x1b[K", row, plen + cur + 1);
+// Erase from the caret's CELL column (col, screen 1-based via col+1) to the
+// end of the row, then echo the input tail out[cur..]; leaves the real
+// cursor after the printed tail. cur is a CHAR index into out (Design Doc
+// C / Major-1 gate fix: col comes in as a cell column computed by the
+// caller's caret_col - NO cell-minus-char subtraction inside: a combining
+// mark (width 0) makes cells_of(out[..cur]) < cur and the old alias
+// (plen_c + cells) - cur underflowed).
+fn echo_tail(row: usize, col: usize, cur: usize, out: &[char]) {
+    print!("\x1b[{};{}H\x1b[K", row, col + 1);
     let mut k = cur;
     while k < out.len() {
         print!("{}", out[k]);
         k += 1;
+    }
+}
+
+// Caret column in CELLS, prompt-relative (Design Doc C / T-7). cur is the
+// read_line_c caret coordinate, dual-unit as before: cur <= out.len() is a
+// CHAR boundary in the input (cells = width of out[..cur]); cur > out.len()
+// sits (cur - out.len()) CELLS into the echoed candidate list (list_width
+// is cell-based, so list-domain units are already cells). This function is
+// the single conversion point from caret coords to screen columns.
+fn caret_col(plen_c: usize, out: &[char], cur: usize) -> usize {
+    if cur <= out.len() {
+        plen_c + cells_of(&out[..cur])
+    } else {
+        plen_c + cells_of(out) + (cur - out.len())
     }
 }
 
@@ -343,13 +376,13 @@ fn echo_tail(row: usize, plen: usize, cur: usize, out: &[char]) {
 pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Option<String> {
     let sz = curses::canvas::get_size();
     let row: usize = if sz.rows > 0 { sz.rows as usize } else { 24 };
-    let plen = chars_of(prompt.clone()).len();
+    let plen_c = cells_of(&chars_of(prompt.clone())); // prompt width in CELLS
     print!("\x1b[{};1H\x1b[2K", row);
     print!("{}", prompt);
     flush_stdout();
     let mut out: Vec<char> = vec![];    // the typed input
     let mut list: Vec<String> = vec![]; // candidates echoed after the input
-    let mut cur: usize = 0;             // cursor in the echo area, 0..=width
+    let mut cur: usize = 0;             // caret coord, dual-unit (see caret_col)
     loop {
         let tl = out.len() + list_width(list.clone()); // echoed width
         let rb = read_byte_eof();
@@ -360,18 +393,18 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
         if b == 0x0D || b == 0x0A { // Enter: the candidate under the cursor wins
             let mut ret = str_of(out.clone());
             if !list.is_empty() {
-                let sel = cand_at(list.clone(), out.len(), cur);
+                let sel = cand_at(list.clone(), cells_of(&out), caret_col(0, &out, cur));
                 if !sel.is_empty() {
                     ret = sel;
                 }
             }
-            echo_goto(row, plen, tl);
+            echo_goto(row, 0, caret_col(plen_c, &out, tl));
             print!("\r\n");
             flush_stdout();
             return Some(ret);
         }
         if b == 0x07 { // Ctrl-g: cancel
-            echo_goto(row, plen, tl);
+            echo_goto(row, 0, caret_col(plen_c, &out, tl));
             print!(" [Cancelled]\r\n");
             flush_stdout();
             return Some("".to_string());
@@ -384,7 +417,7 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                 cur = out.len();
                 if !list.is_empty() { // input changes: the old list echo is stale
                     list = vec![];
-                    print!("\x1b[{};{}H\x1b[K", row, plen + cur + 1);
+                    print!("\x1b[{};{}H\x1b[K", row, caret_col(plen_c, &out, cur) + 1);
                 }
                 let full = chars_of(hits[0].clone());
                 let mut k = chars_of(inp.clone()).len();
@@ -398,7 +431,7 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
             } else if hits.len() > 1 {
                 cur = out.len();
                 if !list.is_empty() { // relisting: erase the old list echo
-                    print!("\x1b[{};{}H\x1b[K", row, plen + cur + 1);
+                    print!("\x1b[{};{}H\x1b[K", row, caret_col(plen_c, &out, cur) + 1);
                 }
                 let cp = common_prefix(hits.clone());
                 let cpc = chars_of(cp);
@@ -423,7 +456,7 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
         if b == 0x02 { // Ctrl-b: one echo char left
             if cur > 0 {
                 cur -= 1;
-                echo_goto(row, plen, cur);
+                echo_goto(row, 0, caret_col(plen_c, &out, cur));
                 flush_stdout();
             }
             continue;
@@ -431,20 +464,20 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
         if b == 0x06 { // Ctrl-f: one echo char right
             if cur < tl {
                 cur += 1;
-                echo_goto(row, plen, cur);
+                echo_goto(row, 0, caret_col(plen_c, &out, cur));
                 flush_stdout();
             }
             continue;
         }
         if b == 0x01 { // Ctrl-a: echo line start
             cur = 0;
-            echo_goto(row, plen, cur);
+            echo_goto(row, 0, caret_col(plen_c, &out, cur));
             flush_stdout();
             continue;
         }
         if b == 0x05 { // Ctrl-e: echo line end
             cur = tl;
-            echo_goto(row, plen, cur);
+            echo_goto(row, 0, caret_col(plen_c, &out, cur));
             flush_stdout();
             continue;
         }
@@ -455,13 +488,13 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                 if t == 0x44 { // Left: one echo char left
                     if cur > 0 {
                         cur -= 1;
-                        echo_goto(row, plen, cur);
+                        echo_goto(row, 0, caret_col(plen_c, &out, cur));
                         flush_stdout();
                     }
                 } else if t == 0x43 { // Right: one echo char right
                     if cur < tl {
                         cur += 1;
-                        echo_goto(row, plen, cur);
+                        echo_goto(row, 0, caret_col(plen_c, &out, cur));
                         flush_stdout();
                     }
                 }
@@ -476,8 +509,8 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                 out.remove(cur - 1);
                 cur -= 1;
                 list = vec![]; // input edited: the listed candidates are stale
-                echo_tail(row, plen, cur, &out);
-                echo_goto(row, plen, cur);
+                echo_tail(row, caret_col(plen_c, &out, cur), cur, &out);
+                echo_goto(row, 0, caret_col(plen_c, &out, cur));
                 flush_stdout();
             }
             continue;
@@ -493,8 +526,8 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
         if !list.is_empty() {
             list = vec![]; // input edited: the listed candidates are stale
         }
-        echo_tail(row, plen, cur - 1, &out);
-        echo_goto(row, plen, cur);
+        echo_tail(row, caret_col(plen_c, &out, cur - 1), cur - 1, &out);
+        echo_goto(row, 0, caret_col(plen_c, &out, cur));
         flush_stdout();
     }
 }
@@ -545,5 +578,43 @@ fn candidate_under_cursor() {
     assert!(cand_at(l.clone(), 1, 2) == "");   // caret in the separator gap
     assert!(cand_at(l.clone(), 1, 9) == "");   // caret past the trailing space
     assert!(cand_at(vec![], 0, 0) == "");
+}
+#[test]
+fn cells_of_cjk() {
+    let s: Vec<char> = "abあ".chars().collect();
+    assert!(cells_of(&s) == 4); // 1 + 1 + 2
+    assert!(cells_of(&[]) == 0);
+    let t: Vec<char> = "a\u{0301}b".chars().collect();
+    assert!(cells_of(&t) == 2); // combining mark adds 0
+}
+#[test]
+fn list_width_cjk() {
+    assert!(list_width(vec!["あい".to_string()]) == 7); // 2 sep + 4 cells + 1
+    assert!(list_width(vec!["aa".to_string(), "ab".to_string()]) == 8); // ASCII unchanged
+}
+#[test]
+fn cand_at_cjk_cells() {
+    // Design Doc C / T-7: spans are built from CELLS, so the cell-end of a
+    // fullwidth candidate (cell 12) hits while the char-based span (end 11)
+    // would miss it.
+    let l = vec!["あa.txt".to_string(), "あi.txt".to_string()]; // 7 cells each
+    assert!(cand_at(l.clone(), 3, 5) == "あa.txt"); // caret at cand1 start
+    assert!(cand_at(l.clone(), 3, 12) == "あa.txt"); // cand1 cell-end (chars: miss)
+    assert!(cand_at(l.clone(), 3, 13) == "あi.txt"); // cand2 start
+    assert!(cand_at(l.clone(), 3, 4) == ""); // separator gap
+}
+#[test]
+fn caret_col_units() {
+    let out: Vec<char> = "/xあ".chars().collect(); // 3 chars, 4 cells
+    assert!(caret_col(11, &out, 0) == 11); // prompt start
+    assert!(caret_col(11, &out, 2) == 13); // after "/x"
+    assert!(caret_col(11, &out, 3) == 15); // after the fullwidth char
+    assert!(caret_col(11, &out, 4) == 16); // list domain: +1 CELL offset
+    // Major-1 (gate): combining marks make cells < chars. caret_col only
+    // ADDED widths (no cell-minus-char subtraction), so echo_tail callers
+    // are underflow-proof: this used to panic in debug builds.
+    let m: Vec<char> = "a\u{0301}\u{0301}\u{0301}".chars().collect(); // 4 chars, 1 cell
+    assert!(caret_col(0, &m, 4) == 1);
+    assert!(caret_col(0, &m, 1) == 1); // caret after base, before marks
 }
 }

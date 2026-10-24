@@ -42,6 +42,47 @@ fn view_of(views: &mut [Option<BufView>], bufs: &[Buffer], bidx: usize) {
     }
 }
 
+// Display width of one char in terminal CELLS (Design Doc C / S-2): the
+// single width source of the codebase - draw_cell and point_pos here, the
+// minibuffer echo math in terminal.rs (cells_of) all use it.
+// Approximated wcwidth: the listed ranges are 2 cells (CJK ideographs incl.
+// ext. A/B+, kana, CJK/fullwidth symbols & forms, Hangul, compat, the emoji
+// block U+1F300-1F64F); combining marks are 0; everything else is 1
+// (control chars included - draw_cell renders them as a space, consistent).
+pub fn char_width(c: char) -> usize {
+    let u = c as u32;
+    if (0x0300..=0x036F).contains(&u) {
+        return 0; // combining diacritics: no advance
+    }
+    if u < 0x1100 {
+        return 1; // ASCII, latin, greek, cyrillic, arabic, hebrew, ...
+    }
+    const WIDE: [(u32, u32); 14] = [
+        (0x1100, 0x11FF),
+        (0x2E80, 0x33FF),
+        (0x3400, 0x4DBF),
+        (0x4E00, 0x9FFF),
+        (0xA960, 0xA97F),
+        (0xAC00, 0xD7A3),
+        (0xF900, 0xFAFF),
+        (0xFE10, 0xFE19),
+        (0xFE30, 0xFE6F),
+        (0xFF00, 0xFF60),
+        (0xFFE0, 0xFFE6),
+        (0x1F300, 0x1F64F),
+        (0x20000, 0x2FFFD),
+        (0x30000, 0x3FFFD),
+    ];
+    let mut k = 0;
+    while k < WIDE.len() {
+        if u >= WIDE[k].0 && u <= WIDE[k].1 {
+            return 2;
+        }
+        k += 1;
+    }
+    1
+}
+
 pub fn split_lines(chars: &[char]) -> Vec<String> {
     let mut lines: Vec<String> = vec![];
     let mut current: Vec<char> = vec![];
@@ -73,7 +114,7 @@ pub fn line_offsets(lines: &[String]) -> Vec<usize> {
 
 pub fn point_pos(chars: &[char], point: usize) -> Vec<usize> {
     let mut pline = 0;
-    let mut pcol = 0;
+    let mut pcol = 0; // DISPLAY CELLS (S-2): fullwidth chars advance 2
     for (seen, c) in chars.iter().enumerate() {
         if seen >= point {
             break;
@@ -82,7 +123,7 @@ pub fn point_pos(chars: &[char], point: usize) -> Vec<usize> {
             pline += 1;
             pcol = 0;
         } else {
-            pcol += 1;
+            pcol += char_width(*c);
         }
     }
     vec![pline, pcol]
@@ -196,6 +237,9 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
             let len = buf.len();
             st_pct = (tree.leaves[leaf_idx].point * 100).checked_div(len).unwrap_or(0);
             crow = frames[i].top + (pline - tree.leaves[leaf_idx].scroll);
+            // pcol is in DISPLAY CELLS (S-2). Clamped to the last cell; on a
+            // fullwidth char straddling the frame edge the caret lands on its
+            // 2nd cell and the terminal snaps it back - accepted (Design Doc C).
             let maxc = if frames[i].width > 0 { frames[i].width - 1 } else { 0 };
             let pc = if pcol < maxc { pcol } else { maxc };
             ccol = frames[i].col + pc;
@@ -248,19 +292,25 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
     let mut chars: Vec<char> = vec![];
     let mut stys: Vec<usize> = vec![];
     let src: Vec<char> = line.chars().collect();
+    let mut cells = 0;
     for (idx, c) in src.into_iter().enumerate() {
-        if chars.len() >= width {
-            break;
-        }
         // Control chars (CR, TAB, ...) must never reach the screen: a stray
         // CR over a padded cell wipes the line (CRLF files looked blank).
         let d = if c < ' ' { ' ' } else { c };
+        let w = char_width(d);
+        // Truncate by CELLS and never split a fullwidth char across the
+        // frame edge: a wide char that does not fit is not drawn (S-2).
+        if cells + w > width {
+            break;
+        }
         chars.push(d);
         stys.push(if idx < styles.len() { styles[idx] } else { 0 });
+        cells += w;
     }
-    while chars.len() < width {
+    while cells < width {
         chars.push(' ');
         stys.push(0);
+        cells += 1;
     }
     // Build the line with SGR escapes injected on style changes; escapes are
     // zero-width so padding/width maths above stays correct.
@@ -290,4 +340,37 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
     print!("\x1b[{};{}H", row + 1, col + 1);
     print!("{}", padded);
     super::terminal::flush_stdout();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn char_width_matrix() {
+        assert!(char_width('a') == 1);
+        assert!(char_width(' ') == 1);
+        assert!(char_width('\t') == 1); // rendered as space by draw_cell
+        assert!(char_width('あ') == 2); // hiragana
+        assert!(char_width('ア') == 2); // katakana
+        assert!(char_width('、') == 2); // U+3001 CJK punctuation
+        assert!(char_width('　') == 2); // fullwidth space
+        assert!(char_width('Ａ') == 2); // fullwidth A
+        assert!(char_width('가') == 2); // hangul syllable
+        assert!(char_width('\u{0301}') == 0); // combining acute
+        assert!(char_width('\u{1F600}') == 2); // emoji (covered block)
+        assert!(char_width('\u{1F680}') == 1); // KNOWN GAP (Design Doc C §2.1)
+        assert!(char_width('é') == 1); // latin-1
+        assert!(char_width('\u{4E00}') == 2); // CJK unified start
+        assert!(char_width('\u{33FF}') == 2); // range end of the catch-all
+        assert!(char_width('\u{20000}') == 2); // ext. B start
+    }
+    #[test]
+    fn point_pos_cells() {
+        let cs: Vec<char> = "あa".chars().collect();
+        assert!(point_pos(&cs, 0) == vec![0, 0]);
+        assert!(point_pos(&cs, 1) == vec![0, 2]); // past the fullwidth char
+        assert!(point_pos(&cs, 2) == vec![0, 3]);
+        let cs2: Vec<char> = "a\nあ".chars().collect();
+        assert!(point_pos(&cs2, 3) == vec![1, 2]);
+    }
 }

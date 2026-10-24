@@ -117,6 +117,17 @@ Run the editor from a real terminal:
   `C-b`/`C-f`, plus `C-a`/`C-e`) move the cursor over the echoed line, and
   Enter on one of the listed candidates selects it; Enter elsewhere
   accepts the typed input.
+- **Fullwidth (CJK) rendering** — display width is measured in terminal
+  CELLS: fullwidth chars (kana, CJK ideographs, Hangul, fullwidth
+  forms/symbols) render 2 cells wide, and window truncation, cursor
+  placement and minibuffer candidate spans are all cell-based (buffer
+  positions stay character indexes). The width table is an approximated
+  wcwidth (see `docs/design/cjk-display-width.md`): emoji outside
+  U+1F300-1F64F count as 1, some holes in the wide ranges count as 2, and
+  combining marks count as 0 only in U+0300-036F (other combining ranges
+  count as 1);
+  when a fullwidth char straddles a window's right edge, the caret lands
+  on its 2nd cell and the terminal snaps it back.
 - **File operations** — `C-x C-f` opens a file into the active window's
   buffer (with a lone window it first splits below and shows the file there;
   buffer name = path, shown by the status line; opening a file whose buffer
