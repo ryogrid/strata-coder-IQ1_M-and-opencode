@@ -72,7 +72,8 @@ Run the editor from a real terminal:
   unreadable file).
 - **Insertion and editing** — printable chars self-insert (UTF-8 included);
   `C-j`/`C-m` insert a newline at point; `C-o` inserts a newline after
-  point; `C-t` transposes the chars around point; `C-q` inserts the next
+  point; `C-t` transposes the chars around point (a no-op at the buffer
+  start, where there is no char before point); `C-q` inserts the next
   key literally (quote).
 - **Movement** — one char, one line, one word (`M-b`/`M-f`), line
   beginning/end, and buffer bounds (`M-<`/`M->`; raw ttys cannot portably
@@ -85,7 +86,10 @@ Run the editor from a real terminal:
   mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the
   region edge. For `C-k` the edge is a mark AHEAD of point; a mark
   BEHIND point is not a kill boundary — `C-k` kills to end of line (and
-  merges lines when point sits on the newline).
+  merges lines when point sits on the newline). EDITING CLEARS the
+  region: insertion (typing, `C-j`/`C-m`/`C-o`, `C-y` paste) and
+  backspace move the mark to point; re-arm the region with `C-@`.
+  `C-d` and `C-k` keep the region.
 - **Incremental forward search** — `C-s` reads the query one char at a
   time: each typed char extends the query, moves point to the match end,
   and the search wraps at the buffer end; a char that matches nowhere
@@ -103,7 +107,8 @@ Run the editor from a real terminal:
   `Invalid line number: <input>`.
 - **Minibuffer and Tab completion** — file paths, buffer names and search/
   goto queries are typed in the bottom-row minibuffer (Tab completion works
-  in path and buffer-name prompts; see Key bindings). When Tab lists
+  in path and buffer-name prompts; see Key bindings; the `C-s`/`C-r`/`C-l`
+  prompts are plain input with NO completion). When Tab lists
   several candidates they are echoed after the input: the arrow keys (or
   `C-b`/`C-f`, plus `C-a`/`C-e`) move the cursor over the echoed line, and
   Enter on one of the listed candidates selects it; Enter elsewhere

@@ -62,8 +62,10 @@
 ## Phase 3: 低優先(Low)
 
 - [x] **B-4**: find 系/`find_buffer` の `Vec<usize>` 戻り値を `Option<usize>` へ。01 §B-4 → find 系は fix #2 で先取り解消(main.rs 4 箇所 Option 化)。`find_buffer`(main.rs:21)は「一致列」を返す別関数のため `Vec<usize>` のまま(Design Doc B に方針明記)
-- [ ] **B-5**: transpose_chars が点=0で先頭2文字を swap(Emacs は no-op)。01 §B-5
-- [ ] **B-6**: 「編集で領域が消える(mark 追従)」を README に明文化。01 §B-6
+- [x] **B-5**: transpose_chars が点=0で先頭2文字を swap(Emacs は no-op)。01 §B-5
+  → 点=0 分岐を削除(no-op 化)。unit transpose_chars_noop_at_start・e2e s156(点 0 で no-op/点 2 で h↔i swap、HEAD worktree 2/2 FAIL・新 3/3 PASS、README/keybindings に no-op 明記、fix #18)
+- [x] **B-6**: 「編集で領域が消える(mark 追従)」を README に明文化。01 §B-6
+  → README Region 条項に「挿入(入力/C-j/C-m/C-o/C-y)と backspace は mark を点へ動かし領域消去、C-@ で張り直し。C-d/C-k は領域維持」を追記(コード実測:insert_char/insert_newline_after/delete_backward の 3 箇所のみ mark=point、fix #18)
 - [ ] **B-9**: buffer の find/クランプ/move_gap 単体テスト追加。01 §B-9 → (部分)find/gap/move_gap(挿入経路)/insert_newline_after は fix #2 で追加済。クランプ系は e2e s112/s141 が担保。残り: line_start/line_end 境界の unit
 - [ ] **B-10**: `self: &Buffer` → `&self`、String 引数 → `&str`/`Into<String>`。01 §B-10
 - [ ] **M-11**: 300行ディスパッチをテーブル化(architecture の keymap tree 記述と共に対応)。02 §M-11
@@ -99,8 +101,10 @@
 - [x] **R-6**: CI 追加(build+test+clippy+e2e)。06 §R-6 → 導入時 `cargo clippy --all-targets` の既存 test コード 17 lint(fix #7 ゲート検出。AGENT.md の現行ゲートは plain `cargo clippy`=0 で合格)も掃除してゲートに含めるとよい
   - 実 lint 数は 18(12 `unnecessary to_string`+5 `== ""`+1 owned 比較。buffer.rs 13・terminal.rs 5)を全て代码側で掃除(`&"x".to_string()`→`"x"`(find_* は元から `&str` 引数)、`== ""`→`.is_empty()`、`cut == "world".to_string()`→`cut == "world")。`--all-targets`=0 を AGENT.md ゲート化(fix #15)
   - `.github/workflows/ci.yml`: 単一 jobs(gates)/ubuntu-24.04で build(`-D warnings`)・clippy(`--all-targets -- -D warnings`)・unit・e2e(tmux 同梱ランナー、単一 job で tmux 競合なし)。`--locked`・branches:[master] 付き(fix #15)
-- [ ] **D-6**: keybindings.md の C-d 二重掲載・C-\ 凡例削除。07 §D-6
-- [ ] **D-8**: C-s/C-r/C-l minibuffer は補完なしの明記。07 §D-8
+- [x] **D-6**: keybindings.md の C-d 二重掲載・C-\ 凡例削除。07 §D-6
+  → 凡例から `C-\`(未バインド)削除。C-d/DEL を Editing 節へ集約(Movement 節から削除、二重掲載解消)、fix #18
+- [x] **D-8**: C-s/C-r/C-l minibuffer は補完なしの明記。07 §D-8
+  → keybindings.md Minibuffer 節に前置き(補完=path/buffer-name のみ、C-s/C-r/C-l は素の入力行・Tab はリテラル)、README 一文追記、fix #18
 - [x] **D-9**: README:79 に「全読み込みエラーで空で開く」注記(M-9 と同時)。07 §D-9 → M-9 と同時に新挙動(Failed to open 表示・filename 未バインド)を README へ記述(fix #4)
 
 ## 確認済み良好点(対応不要・記録)
@@ -452,7 +456,7 @@
   b 側の open 経路は CI ランナーの s133 失敗再現=断言の順序非依存性で担保)。
   CI 再検証は本 push の実行で確認。
   (fix #16 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #17(このコミット)**: R-5(curses 依存を termsize 直依存に置換)。
+- 2026-10-25: **fix #17(コミット 67ecf76)**: R-5(curses 依存を termsize 直依存に置換)。
   curses 0.1.0 の canvas::get_size は `termsize::get().unwrap_or(Size{0,0})` の薄
   ラッパー(レジストリ ソースで確認・ゲートでも再検証)。Cargo.toml を termsize 0.1.9
   (lock 済み版と同版)に置換し、`screen::term_size()` に集約(呼び出し 3 箇所=draw_all/
@@ -463,4 +467,20 @@
   0・unit 30/30・`RUSTFLAGS=-D warnings --locked` 構築可・フル e2e 84/84(run22)・
   release 6/6(rs10)。パイプ時 s140/s142 の 24x80 フォールバックは termsize::get()の
   None 経路で同一(非 tty ゲート確認)。ゲート APPROVE(両コミット)。
+  CI 検証:run(67ecf76)=成功(s133 修正+termsize 置換を含む全ステップ green)。
+  GitHub ランナーで e2e 84/84=初フルグリーン(fix #16/#17 統合ゲート済み)。
   (fix #17 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #18(このコミット)**: 低コスト簇 B-5/B-6/D-6/D-8。
+  B-5=transpose_chars の点 0 分岐(先頭 2 文字 swap)を削除し Emacs 準拠で no-op 化
+  (unit transpose_chars_noop_at_start=点 0 で不変+点 2 で h↔i swap・point 進)。
+  e2e s156(C-t@0 でデモ 1 行目不変/C-f×2 後の C-t で `Tihs ...`、HEAD=67ecf76
+  worktree probe 2/2 実行 FAIL[旧 1 行目=`hTis ...`(swap_at(0) で T↔h)]・
+  新 probe 3/3 実行 PASS)。README/keybindings に
+  no-op を明記。B-6=README Region 条項に編集での領域消去(挿入系と backspace は
+  mark=point、C-d/C-k は維持)を追記(コード実測 3 箇所のみ追従)。D-6=keybindings.md
+  凡例 `C-\` 削除・C-d/DEL を Editing 節へ集約(二重掲載解消)。D-8=keybindings.md
+  Minibuffer 節に補完射程の前置き(C-s/C-r/C-l は素の入力・Tab リテラル)+README 一文。
+  unit 31/31・clippy `--all-targets` 0・build 0・フル e2e 85/85(/tmp/e2e_run23.out)・
+  release 6/6(/tmp/rs11.out)。s156 追加による release_smoke 行範囲(1,53/543,545)は
+  末尾追加のため不変(実測)。ゲートレビューはコミット前に実施。
+  (fix #18 のコミットハッシュは次エントリに記載)

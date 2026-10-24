@@ -239,6 +239,8 @@ impl Buffer {
     }
 
     pub fn transpose_chars(self: &mut Buffer) {
+        // B-5: Emacs C-t is a NO-OP at the buffer start (point 0): the
+        // char AFTER point is not transposed with the one before it.
         if self.point > 0 {
             if self.point < self.len() {
                 self.swap_at(self.point - 1);
@@ -246,9 +248,6 @@ impl Buffer {
             } else if self.len() > 1 {
                 self.swap_at(self.len() - 2);
             }
-        } else if self.len() > 1 {
-            self.swap_at(0);
-            self.point = 1;
         }
     }
 
@@ -538,5 +537,17 @@ fn kill_backward_mark_kills_to_eol() {
     c.mark = 3;
     assert!(c.kill_to_end_of_line() == "bc");
     assert!(c.text() == "adef\n");
+}
+#[test]
+fn transpose_chars_noop_at_start() {
+    // B-5: C-t at point 0 does NOTHING (Emacs); mid-buffer swaps + advances
+    let mut b = Buffer::new("t".to_string(), "ab".to_string());
+    b.transpose_chars();
+    assert!(b.text() == "ab");
+    assert!(b.point == 0);
+    b.point = 1;
+    b.transpose_chars();
+    assert!(b.text() == "ba");
+    assert!(b.point == 2);
 }
 }

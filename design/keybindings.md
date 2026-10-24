@@ -1,6 +1,6 @@
 # Emacs Key Bindings (core set)
 
-Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
+Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x.
 
 ## Self-insert & misc
 
@@ -26,17 +26,16 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 | `M-f` | `forward-word` |
 | `M-<` | `beginning-of-buffer` (raw ttys cannot portably send `C-<`) |
 | `M->` | `end-of-buffer` (raw ttys cannot portably send `C->`) |
-| `C-d` | `delete-forward` |
-| `DEL` (backspace) | `delete-backward` |
 
 ## Editing
 
 | Key | Command |
 |-----|---------|
 | `C-o` | `insert-newline-after` |
-| `C-t` | `transpose-chars` |
+| `C-t` | `transpose-chars` (no-op at the buffer start: no char before point) |
 | `C-k` | `kill-to-end-of-line` |
 | `C-d` | `delete-forward` |
+| `DEL` (backspace) | `delete-backward` |
 
 ## Regions / Mark
 
@@ -84,6 +83,14 @@ then the pair splits at >= 2 without a boundary).
 | `C-l` | `goto-line`: minibuffer reads a line number, point moves to the start of that line (1-based, clamped to the last line); empty cancels, zero or non-digits report `Invalid line number: <input>` |
 
 ## Minibuffer
+
+Tab completion (the rows below) applies to the path and buffer-name
+prompts (`C-x C-f` / `C-x C-w` / `C-x b`; `C-x k` only asks a yes/no
+confirmation and has no completion). The `C-s` / `C-r` / `C-l` prompts
+have NO completion: `C-s` reads the query one char at a time so Tab
+extends the query as a literal char; in the `C-r` / `C-l` input lines Tab
+is ignored by the inert completion handler (no candidate line is ever
+listed in any of the three).
 
 | Key | Command |
 |-----|---------|
