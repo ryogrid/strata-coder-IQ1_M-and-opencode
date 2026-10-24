@@ -3,6 +3,8 @@ use std::io::stdin;
 use std::io::Read;
 use std::io::stdout;
 use std::io::Write;
+use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::Ordering;
 
 // Flush the userspace stdout buffer. Rust line-buffers stdout and the editor
 // writes no newlines during frames, so without this the screen (and query
@@ -16,7 +18,16 @@ pub fn flush_stdout() {
 }
 
 // Put the controlling tty into raw mode so control codes arrive as raw bytes.
-pub fn save_raw_mode() -> Option<Termios> {
+// Returns a guard restoring the original settings when dropped (normal exit,
+// early return, panic unwinding), so raw mode never leaks. The saved termios
+// is also parked in a static slot for the signal handlers (Design Doc A).
+pub struct TtyGuard {
+    saved: Option<Termios>,
+}
+
+static SAVED_TERMIOS: AtomicPtr<Termios> = AtomicPtr::new(std::ptr::null_mut());
+
+pub fn save_raw_mode() -> TtyGuard {
     let fd = 0; // stdin
     let t = Termios::from_fd(fd);
     match t {
@@ -30,11 +41,20 @@ pub fn save_raw_mode() -> Option<Termios> {
                 Ok(_) => {}
                 Err(_) => {}
             }
-            return Some(orig);
+            // One-time leak (process-lifetime storage): shared with the
+            // signal handlers through the static slot.
+            SAVED_TERMIOS.store(Box::leak(Box::new(orig)) as *mut Termios, Ordering::Relaxed);
+            return TtyGuard { saved: Some(orig) };
         }
         Err(_) => {
-            return None; // not a tty: nothing configured or saved
+            return TtyGuard { saved: None }; // not a tty: nothing configured
         }
+    }
+}
+
+impl Drop for TtyGuard {
+    fn drop(&mut self) {
+        restore_mode(self.saved);
     }
 }
 
@@ -50,15 +70,46 @@ pub fn restore_mode(saved: Option<Termios>) {
     }
 }
 
+// SIGTERM/SIGHUP/SIGINT/SIGQUIT: restore the tty, then exit. Only external
+// kills reach here (ISIG is cleared, so the tty never raises these; do not
+// "test" with Ctrl-C); SIGKILL stays uncatchable - raw-mode leak is that
+// path's inherent limit.
+extern "C" fn restore_on_signal(sig: i32) {
+    let p = SAVED_TERMIOS.load(Ordering::Relaxed);
+    if !p.is_null() {
+        unsafe {
+            let _ = tcsetattr(0, TCSANOW, &*p);
+        }
+    }
+    unsafe {
+        libc::_exit(128 + sig);
+    }
+}
+
+pub fn install_restore_signals() {
+    unsafe {
+        libc::signal(libc::SIGTERM, restore_on_signal as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGHUP, restore_on_signal as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGINT, restore_on_signal as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGQUIT, restore_on_signal as *const () as libc::sighandler_t);
+    }
+}
+
 // Read a single byte from stdin (raw mode). Returns [byte, eof]:
 // a real NUL byte (Ctrl-space) is Ok(1) and must not be confused with EOF,
 // which happens when read() returns no bytes at all.
 pub fn read_byte_eof() -> Vec<u8> {
     let mut buf = [0u8; 1];
-    let r = stdin().lock().read(&mut buf);
-    match r {
-        Ok(1) => vec![buf[0], 0],
-        _ => vec![0, 1],
+    loop {
+        let r = stdin().lock().read(&mut buf);
+        match r {
+            Ok(1) => return vec![buf[0], 0],
+            Ok(_) => return vec![0, 1], // read() delivered no byte: EOF
+            // std does NOT auto-retry EINTR on StdinLock::read (it surfaces
+            // Err(Interrupted), cf. rust-lang/rust#87337): this loop is the retry.
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return vec![0, 1],
+        }
     }
 }
 
@@ -67,8 +118,10 @@ pub fn read_byte() -> u8 {
     read_byte_eof()[0]
 }
 
-// Read one UTF-8 code point given its first byte.
-pub fn read_char_from(first: u8) -> char {
+// Read one UTF-8 code point given its first byte. Returns None when stdin
+// hits EOF mid-sequence (continuation bytes never arrived): callers must
+// then NOT insert anything.
+pub fn read_char_eof(first: u8) -> Option<char> {
     let extra: usize =
         if first < 0x80 {
             0
@@ -83,11 +136,15 @@ pub fn read_char_from(first: u8) -> char {
         };
     let mut bytes: Vec<u8> = vec![first];
     for _ in 0..extra {
-        bytes.push(read_byte());
+        let rb = read_byte_eof();
+        if rb[1] == 1 {
+            return None; // EOF: incomplete code point, insert nothing
+        }
+        bytes.push(rb[0]);
     }
     match String::from_utf8(bytes) {
-        Ok(s) => s.chars().nth(0).unwrap_or(' '),
-        _ => ' ',
+        Ok(s) => Some(s.chars().nth(0).unwrap_or(' ')),
+        _ => Some(' '),
     }
 }
 
@@ -299,8 +356,11 @@ fn echo_tail(row: usize, plen: usize, cur: usize, out: &[char]) {
 // move over the echoed line (arrows / C-b / C-f / C-a / C-e): Enter on a
 // listed candidate selects it, Enter elsewhere accepts the typed input,
 // and editing the input clears a stale candidate list. Returns the
-// completed string.
-pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> String {
+// completed string, or None on EOF (stdin closed): the command cancels,
+// and the main loop's own EOF read ends the session. The ESC-branch inner
+// reads intentionally stay read_byte(): an EOF byte (0) never matches
+// '[', and the loop-top read_byte_eof returns None, so no hang is possible.
+pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Option<String> {
     let sz = curses::canvas::get_size();
     let row: usize = if sz.rows > 0 { sz.rows as usize } else { 24 };
     let plen = chars_of(prompt.clone()).len();
@@ -312,7 +372,11 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Strin
     let mut cur: usize = 0;             // cursor in the echo area, 0..=width
     loop {
         let tl = out.len() + list_width(list.clone()); // echoed width
-        let b = read_byte();
+        let rb = read_byte_eof();
+        if rb[1] == 1 {
+            return None; // EOF: cancel this prompt
+        }
+        let b = rb[0];
         if b == 0x0D || b == 0x0A { // Enter: the candidate under the cursor wins
             let mut ret = str_of(out.clone());
             if list.len() > 0 {
@@ -324,13 +388,13 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Strin
             echo_goto(row, plen, tl);
             print!("\r\n");
             flush_stdout();
-            return ret;
+            return Some(ret);
         }
         if b == 0x07 { // Ctrl-g: cancel
             echo_goto(row, plen, tl);
             print!(" [Cancelled]\r\n");
             flush_stdout();
-            return "".to_string();
+            return Some("".to_string());
         }
         if b == 0x09 { // Tab: minibuffer completion
             let inp = str_of(out.clone());
@@ -443,7 +507,10 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Strin
         if cur > out.len() {
             cur = out.len();
         }
-        let c = read_char_from(b);
+        let c = match read_char_eof(b) {
+            Some(c) => c,
+            None => return None, // EOF mid-codepoint: cancel this prompt
+        };
         out.insert(cur, c);
         cur += 1;
         if list.len() > 0 {
@@ -457,18 +524,25 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Strin
 
 // Read a line of input in raw mode with local echo, printed on the bottom
 // (status) row so it replaces the status line like Emacs minibuffer prompts.
+// EOF collapses to the empty string (= cancel), same as Ctrl-g.
 pub fn read_line(prompt: String) -> String {
-    return read_line_c(prompt, vec![], false);
+    return read_line_c(prompt, vec![], false).unwrap_or("".to_string());
 }
 
 // Minibuffer line with Tab completion over given candidates (buffer names).
 pub fn read_line_buffers(prompt: String, names: Vec<String>) -> String {
-    return read_line_c(prompt, names, false);
+    return read_line_c(prompt, names, false).unwrap_or("".to_string());
 }
 
 // Minibuffer line with Tab completion over the filesystem.
 pub fn read_line_files(prompt: String) -> String {
-    return read_line_c(prompt, vec![], true);
+    return read_line_c(prompt, vec![], true).unwrap_or("".to_string());
+}
+
+// Minibuffer line exposing the EOF distinction (None): for call sites where
+// "stdin closed" must behave differently from "cancelled" (exit confirm).
+pub fn read_line_eof(prompt: String, cands: Vec<String>, file_comp: bool) -> Option<String> {
+    return read_line_c(prompt, cands, file_comp);
 }
 
 #[cfg(test)]

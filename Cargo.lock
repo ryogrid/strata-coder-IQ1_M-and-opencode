@@ -16,6 +16,7 @@ name = "emur"
 version = "0.1.0"
 dependencies = [
  "curses",
+ "libc",
  "termios",
 ]
 

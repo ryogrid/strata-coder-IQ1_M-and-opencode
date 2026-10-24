@@ -143,9 +143,16 @@ Run the editor from a real terminal:
 - **Quit and exit confirmation** — `C-x C-c`/`C-c` quit; if any buffer has
   unsaved modifications, the editor first asks `Modified buffers exist;
   exit anyway? (yes|no)` in the minibuffer and only `yes` (or `y`) exits,
-  anything else cancels; closing stdin / EOF exits unconditionally. Quitting
-  restores the tty settings saved on startup, so the controlling shell keeps
-  working normally (SIGINT, EOL, echo) after the editor exits.
+  anything else cancels. EOF (stdin closed) during key reading exits
+  unconditionally WITHOUT asking — unsaved changes are lost (a confirmation
+  is impossible once stdin is closed); EOF during a minibuffer prompt
+  cancels that command — with one exception: EOF at the exit-confirmation
+  prompt exits (the confirmation cannot be answered once stdin is closed).
+  Quitting restores the tty settings saved on
+  startup — also on panics (the restore guard runs during unwinding) and
+  on SIGTERM/SIGHUP/SIGINT/SIGQUIT (SIGKILL stays uncatchable) — so the
+  controlling shell keeps working normally (SIGINT, EOL, echo) after the
+  editor exits.
 - **Syntax highlighting** — automatic, no key: the language is detected
   from the buffer/file-name extension; keywords cyan, strings magenta,
   comments green, numbers blue, markdown headings and HTML tags bold cyan.
@@ -165,7 +172,7 @@ Run the editor from a real terminal:
 |-----|---------|
 | printable char | self-insert |
 | `C-g` | cancel current command / echo |
-| `C-x C-c`, `C-c` | quit; if any buffer has unsaved modifications, first asks `Modified buffers exist; exit anyway? (yes|no)` and only `yes` exits (closing stdin / EOF exits unconditionally) |
+| `C-x C-c`, `C-c` | quit; if any buffer has unsaved modifications, first asks `Modified buffers exist; exit anyway? (yes|no)` and only `yes` exits (EOF during key reading exits unconditionally — unsaved changes are lost; EOF in a minibuffer prompt cancels that command) |
 | `C-j` / `C-m` | insert newline at point |
 | `C-b` / `C-f` | backward / forward one char |
 | `C-n` / `C-p` | next / previous line |

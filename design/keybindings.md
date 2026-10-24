@@ -9,8 +9,8 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 | printable char | `self-insert` |
 | `C-q` | `self-insert` (quote next key) |
 | `C-g` | `cancel` (abort current command / clear echo) |
-| `C-x C-c` | `quit` (if any buffer is modified, first asks `Modified buffers exist; exit anyway? (yes|no)` in the minibuffer; only `yes`/`y` exits, anything else cancels) |
-| `C-c` | `exit` (same confirmation; closing stdin / EOF exits unconditionally) |
+| `C-x C-c` | `quit` (if any buffer is modified, first asks `Modified buffers exist; exit anyway? (yes|no)` in the minibuffer; only `yes`/`y` exits, anything else cancels; EOF handling as per `C-c` below) |
+| `C-c` | `exit` (same confirmation; EOF during key reading exits unconditionally - unsaved changes are lost, no confirmation is possible once stdin is closed; EOF in a minibuffer prompt cancels that command, except at the exit-confirmation prompt where EOF exits) |
 
 ## Movement
 

@@ -31,8 +31,9 @@ fn find_buffer(bufs: &[buffer::Buffer], name: String) -> Vec<usize> {
 
 // Quit confirmation (Emacs: "Modified buffers exist; exit anyway? (yes|no)"):
 // exiting via Ctrl-c / Ctrl-x Ctrl-c asks in the minibuffer when any buffer
-// has unsaved modifications. EOF (stdin closed / session killed) exits
-// unconditionally. Only "yes" (or "y") exits; anything else cancels.
+// has unsaved modifications. Only "yes" (or "y") exits; anything else cancels.
+// EOF (stdin closed) cannot be answered, so it exits: unsaved changes are
+// lost (documented in README, Design Doc A / M-4 policy).
 fn confirm_exit(bufs: &[buffer::Buffer]) -> bool {
     let mut dirty = false;
     let mut j = 0;
@@ -43,12 +44,21 @@ fn confirm_exit(bufs: &[buffer::Buffer]) -> bool {
     if !dirty {
         return true;
     }
-    let sel = terminal::read_line("Modified buffers exist; exit anyway? (yes|no) ".to_string());
-    return sel == "yes".to_string() || sel == "y".to_string();
+    let sel = terminal::read_line_eof("Modified buffers exist; exit anyway? (yes|no) ".to_string(), vec![], false);
+    match sel {
+        None => return true, // EOF: no input possible, exit with data loss
+        Some(s) => return s == "yes".to_string() || s == "y".to_string(),
+    }
 }
 
 fn main() {
-    let saved_tty = terminal::save_raw_mode();
+    // Visible panic report; the actual tty restore happens through TtyGuard's
+    // Drop (unwinding runs drops), so no panic can leave the shell in raw mode.
+    let _ = std::panic::set_hook(Box::new(|info| {
+        eprintln!("emur panicked - restoring terminal: {}", info);
+    }));
+    let _guard = terminal::save_raw_mode(); // bound by name: Drop at end of main
+    terminal::install_restore_signals();
     let args: Vec<String> = std::env::args().collect();
     let mut bufs = vec![buffer::Buffer::new("*demo*".to_string(), "This is the first line\nof the demo buffer.\n".to_string())];
     if args.len() > 1 {
@@ -253,7 +263,10 @@ fn main() {
                     if qs.len() == 0 { continue; } // still waiting for chars
                     attempt = qs.clone();
                 } else { // a printable char extends the query
-                    let cc = terminal::read_char_from(c2);
+                    let cc = match terminal::read_char_eof(c2) {
+                        Some(c) => c,
+                        None => break, // EOF: keep the current match
+                    };
                     attempt = qs.clone();
                     attempt.push(cc);
                     echo_ch = cc.to_string();
@@ -356,36 +369,55 @@ fn main() {
             if q.len() == 0 {
                 msg = "Cancelled".to_string();
             } else {
-                let mut want_ln: u32 = 0;
-                let mut digits = true;
-                for c in q.chars() {
-                    if c >= '0' && c <= '9' {
-                        want_ln = want_ln * 10 + ((c as u32) - ('0' as u32));
-                    } else {
-                        digits = false;
+                // M-1: digits-only gate (parse alone accepts a leading '+'),
+                // u64 parse (a 15-digit number is an Ok value, never a u32
+                // overflow panic), and a total-line-count scan that bounds
+                // the movement loop: huge numbers clamp to the last line
+                // (documented behavior) and can no longer spin the loop.
+                let digits_ok = q.bytes().all(|c| c.is_ascii_digit());
+                let want = if digits_ok { q.parse::<u64>().ok() } else { None };
+                match want {
+                    None => msg = format!("Invalid line number: {}", q),
+                    Some(0) => msg = format!("Invalid line number: {}", q),
+                    Some(want_ln) => {
+                        let mut total: u64 = 1;
+                        let mut i = 0;
+                        while i < bufs[bi].len() {
+                            if bufs[bi].char_at(i) == '\n' { total += 1; }
+                            i += 1;
+                        }
+                        let target = if want_ln < total { want_ln } else { total };
+                        bufs[bi].beginning_of_buffer();
+                        let mut k: u64 = 1;
+                        while k < target {
+                            bufs[bi].next_line();
+                            k += 1;
+                        }
+                        msg = "".to_string();
                     }
-                }
-                if !digits || want_ln == 0 {
-                    msg = format!("Invalid line number: {}", q);
-                } else {
-                    bufs[bi].beginning_of_buffer();
-                    let mut k: u32 = 1;
-                    while k < want_ln {
-                        bufs[bi].next_line(); // next_line stops at the last line (clamps)
-                        k += 1;
-                    }
-                    msg = "".to_string();
                 }
             }
-        } else if b == 0x11 {
-            let n = terminal::read_byte(); // Ctrl-q: quote next key
-            bufs[bi].insert_char(terminal::read_char_from(n));
+        } else if b == 0x11 { // Ctrl-q: quote next key
+            // NB: at EOF the leading byte arrives as 0 (read_byte), which is
+            // Ctrl-space's NUL - a literal NUL gets inserted once. Bounded:
+            // the loop-top read_byte_eof then ends the session. (Design Doc A)
+            let n = terminal::read_byte();
+            match terminal::read_char_eof(n) {
+                Some(c) => bufs[bi].insert_char(c),
+                None => {} // EOF: insert nothing
+            }
         } else if b == 0x0a || b == 0x0d {
             bufs[bi].insert_char('\n'); // Ctrl-j / Ctrl-m: newline
         } else if b >= 0x20 && b < 0x7f {
-            bufs[bi].insert_char(terminal::read_char_from(b)); // self-insert (ASCII)
+            match terminal::read_char_eof(b) { // self-insert (ASCII)
+                Some(c) => bufs[bi].insert_char(c),
+                None => {}
+            }
         } else if b >= 0x80 {
-            bufs[bi].insert_char(terminal::read_char_from(b)); // self-insert (UTF-8)
+            match terminal::read_char_eof(b) { // self-insert (UTF-8)
+                Some(c) => bufs[bi].insert_char(c),
+                None => {} // EOF mid-codepoint: insert nothing
+            }
         }
         if !moved {
             tree.leaves[active].point = bufs[bi].point;
@@ -393,5 +425,4 @@ fn main() {
         }
         prev_cmd = b;
     }
-    terminal::restore_mode(saved_tty);
 }

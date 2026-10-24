@@ -40,6 +40,18 @@ report() {
   tmux kill-session -t "$SESSION" 2>/dev/null
 }
 
+# Pipe (non-tmux) runner (Design Doc A §4): runs emur with piped stdin under
+# timeout. Sets RC (exit code; a timeout kill gives 124), SIZE (stdout bytes;
+# the EOF flood regressions emit tens of MB, so exit code alone is not
+# enough) and CAP (captured output file for expect_p).
+run_pipe() {
+  CAP="/tmp/emur-e2e-pipe-$1.out"
+  printf '%s' "$2" | timeout 10 "$BIN" > "$CAP" 2>/dev/null
+  RC=$?
+  SIZE=$(wc -c < "$CAP")
+}
+expect_p() { grep -qE -- "$1" "$CAP"; }
+
 t_s01() {
   start_session s01
   local ok=1
@@ -209,10 +221,25 @@ t_s20() {  # three stacked windows
 }
 
 t_s21() {  # top split again, right: 3 windows, 3 seed occurrences
+  # NOTE (2026-10-24): the old count assertion (expect_occ ... 3) flaked
+  # because a single capture can RACE the rendering: mid-sequence it sees
+  # the 2-window state (C-x 3 not applied yet), and frames begin with a
+  # screen_clear so a partial capture shows the not-yet-drawn bottom window
+  # as '@' lines. The new assertions describe the layout structure (left
+  # column seeds x2, glued boundary-column row, dash boundary row) and poll
+  # 3x so the render race is absorbed; layout facts: boundary column sits
+  # at col 40 (width/2) and the boundary row spans the full width (cols).
   start_session s21
   sendb $'\0302' $'\0303'
   local ok=1
-  expect_occ 'This is the first line' 3 || ok=0
+  local i ok3=0
+  for i in 1 2 3; do
+    sleep 0.4
+    cap | grep -cE '^This is the first line' | grep -q '^2$' &&
+      cap | grep -qE '\|This is the first line' &&
+      cap | grep -qE '^-{40,}$' && { ok3=1; break; }
+  done
+  [ "$ok3" = 1 ] || ok=0
   report s21 "$ok"
 }
 
@@ -897,11 +924,40 @@ t_s133() {  # Find file: Tab lists two files; arrow-lefts land on the first cand
   report s133 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133; do
+t_s140() {  # exit-confirm EOF (piped stdin): clean exit, no NUL flood (T-1/M-2)
+  run_pipe s140 $'x\003'
+  local ok=1
+  [ "$RC" = 0 ] || ok=0
+  [ "$SIZE" -lt 1048576 ] || ok=0
+  expect_p 'exit anyway' || ok=0
+  report s140 "$ok"
+}
+
+t_s141() {  # C-l with a 15-digit number: clamps to last line, editor alive (M-1)
+  start_session s141
+  sendb $'\014' '999999999999999'
+  enter
+  local ok=1
+  expect_lastline 'Buf *demo* 3/3 (100%)' || ok=0
+  sendb 'Z'
+  expect_lastline 'Buf *demo* * 3/3 (100%)' || ok=0
+  report s141 "$ok"
+}
+
+t_s142() {  # C-r query EOF before Enter: cancelled, one status frame, clean exit
+  run_pipe s142 $'\022abc'
+  local ok=1
+  [ "$RC" = 0 ] || ok=0
+  [ "$SIZE" -lt 1048576 ] || ok=0
+  expect_p 'Cancelled' || ok=0
+  report s142 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142; do
   "$t"
 done
 
-rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt
+rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt /tmp/emur-e2e-pipe-s140.out /tmp/emur-e2e-pipe-s142.out
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"
