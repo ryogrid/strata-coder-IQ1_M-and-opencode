@@ -146,12 +146,56 @@ impl Tree {
         false
     }
 
-    pub fn collapse(self: &mut Tree, leaf: usize) {
+    // Collapse the tree to the single window showing `leaf` (C-x 1).
+    // S-3: REBUILDS the arrays around the surviving leaf, freeing every
+    // other leaf/slot/node (the old push-only growth made repeated
+    // split + C-x 1 cycles grow kind/which/nodes/leaves forever).
+    // Returns the surviving leaf's NEW index (callers remap `active`).
+    pub fn collapse(self: &mut Tree, leaf: usize) -> usize {
         let s = self.find_slot(self.root, leaf);
         if s < self.kind.len() {
-            self.root = self.kind.len();
-            self.kind.push(0);
-            self.which.push(leaf);
+            let keep = Leaf {
+                buffer: self.leaves[leaf].buffer,
+                point: self.leaves[leaf].point,
+                mark: self.leaves[leaf].mark,
+                scroll: self.leaves[leaf].scroll,
+            };
+            self.leaves = vec![keep];
+            self.kind = vec![0]; // single leaf slot
+            self.which = vec![0];
+            self.nodes = vec![];
+            self.root = 0;
+            return 0;
+        }
+        leaf // leaf not in this tree: untouched (callers pass the active leaf)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn collapse_shrinks_to_one_leaf() {
+        let mut t = new_tree(3);
+        t.leaves[0].point = 5; // non-zero so the 4-field copy is asserted
+        t.leaves[0].mark = 2;
+        t.leaves[0].scroll = 1;
+        assert!(t.split(0, true));
+        let second = t.leaves.len() - 1;
+        let new_idx = t.collapse(second);
+        assert!(new_idx == 0);
+        assert!(t.leaves.len() == 1 && t.kind.len() == 1 && t.which.len() == 1);
+        assert!(t.nodes.is_empty() && t.root == 0);
+        // the survivor is the PASSED leaf (the split copy): all four fields kept
+        assert!(t.leaves[0].buffer == 3 && t.leaves[0].point == 5
+            && t.leaves[0].mark == 2 && t.leaves[0].scroll == 1);
+        // repeated cycles stay compact
+        for i in 0..5 {
+            assert!(t.split(0, i % 2 == 0));
+            let b = t.leaves[t.leaves.len() - 1].buffer;
+            assert!(b == 3);
+            assert!(t.collapse(t.leaves.len() - 1) == 0);
+            assert!(t.leaves.len() == 1 && t.kind.len() == 1);
         }
     }
 }

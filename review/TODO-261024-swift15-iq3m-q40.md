@@ -35,13 +35,15 @@
 - [x] **M-9**: read_file が全エラーを無言(空表示)。開けない時のステータスメッセージ。02 §M-9 → `Result<String,String>` 化で argv/C-x C-f/C-x C-i が `Failed to open <path>: <errno>` を表示。argv 失敗時 filename 未バインド(C-x C-s が元ファイルを上書きしない)。e2e s147(fix #4)
 - [x] **M-10**: C-l が next_line を行数回繰り返す O(n×行長)。1回スキャンへ。02 §M-10 → 単一 O(n) スキャン(行数計数とライン頭計算を一体化、want が総行数超なら最終行にクランプ=M-1 維持)。C-l 実測 3/6・9→6/6・1/6、e2e s112/s141 2/2(fix #10)
 - [x] **S-2**: 全角(CJK)を幅1として扱う。セル数基準化。03 §S-2 / Design Doc C → `char_width`(screen.rs、幅表の単一源)を導入し、`draw_cell` の打切り/パディングと `point_pos`(=カーソル列)をセル基準化。e2e s149/s150(fix #8)
-- [ ] **S-3**: split/collapse で tree のスロットが単調増加(未回收)。03 §S-3
+- [x] **S-3**: split/collapse で tree のスロットが単調増加(未回收)。03 §S-3
 - [x] **T-4**: read(2) エラーを EOF と同一視。Err では再試行ループとし Ok(0) をもって EOF とする(std が EINTR を再試行する事実を確認したらコメントで明文化)。04 §T-4 / Design Doc A → 再試行ループ実装。実測: std の StdinLock::read は EINTR を自動再試行しない(Err(Interrupted) を返す)ため explicit ループが本体。コメント明記済み(fix #1)
 - [x] **H-2**: Rust のライフタイム `'a` を文字列として誤色。lang1 の `'` 処理改善。05 §H-2 / Design Doc B → 3条件(同一行閉じ/j>=i+2/内容が string 的)採用。フィクスチャ `fn f<'de>(x: &'de str) {}` をテストで固定(fix #2)
 - [x] **H-3**: detect が拡張子の大文字小文字を区別しない(FILE.RS 無装飾)。05 §H-3 / Design Doc B → ASCII 小文字化比較+fizz マトリクステスト(fix #2)
 - [x] **R-1**: clippy 94 件。`cargo clippy --fix` + 手当てで掃除。完了ゲート: `cargo clippy` 警告0行(AGENT.md に clippy ルール追記)。06 §R-1 → 102 件を `cargo clippy --fix`(92 自動)+ 手当て(&String→&str、ループカウンタ→enumerate、checked_div、if let、word_eq 書き直し、`let _ =` 受信、self-insert 2 分岐マージ)で **0 行**。AGENT.md に clippy ゼロ則を追記。e2e 76/76+release スモーク 6/6 PASS(fix #6)
 - [x] **R-2**: e2e が debug のみ。release での代表スモーク追加。06 §R-2 → `test-design/release_smoke.sh`(s02/s103/s110/s112/s140/s141 を release バイナリで実行、ビルド自動、6/6 PASS)。溢れ系 s141 を含む(fix #5)
 - [ ] **R-3**: window/screen の単体テスト追加(buffer=find 系は B-9、highlight は H-8 が担当)。06 §R-3
+  - follow-up(fix #13 ゲート由来):「C-x 1 後に C-x C-f」で単一窓は下分割で新ファイル表示
+    (README 文書規則どおり)を固定する e2e シナリオ追加。window.rs tests に collapse 回收テスト済み
 - [x] **R-4**: run.out/smoke.txt/demo.txt 未整理。.gitignore 追記。06 §R-4 → 3 ファイルを .gitignore に追加(fix #5)
 - [x] **D-1**: README:148・keybindings.md:13「EOF 無条件終了」の記述を実装に合わせ修正(Phase 1 の EOF 実装修正と同時に実施、完了記録は当該コミット)。07 §D-1 / Design Doc A → README 本文+キー表+keybindings.md 更新済み(fix #1)
 - [x] **D-2**: design/README.md の "Not implemented" 列表陳腐化(syntax highlighting 等)。07 §D-2 → Implemented 側に highlight/minibuffer 補完/ファイル再利用/検索を追記、Not implemented 側から syntax highlighting を除去し undo 不可の风险注記+「コマンドフレームワーク無し(補完付きプロンプトは実装済)」に更新(fix #11)
@@ -354,7 +356,7 @@
   panic と判明。split 後 active は元 leaf のため stale は非 active 側=全 leaf
   リセットが効く経路)。フル e2e 82/82・release 6/6・clippy 0・test 22/22。
   (fix #9 のコミットハッシュは次エントリに記載)
-- 2026-10-24: **fix #10(このコミット)**: M-10(C-l の go-to-line 2 パス走査→1 回)。
+- 2026-10-24: **fix #10(コミット 41d1bf3)**: M-10(C-l の go-to-line 2 パス走査→1 回)。
   行数計数スキャン+先頭からの next_line 反復を、改行数を数えながら `want_ln` 行目の
   行頭を記録する単一スキャンに統合(want が超えたら最終行頭を記録した位置にクランプ、
   M-1 のセマンティクス不変)。到達点は旧実装と同一(先頭 0・列 0 で進む next_line の
@@ -365,17 +367,37 @@
   e2e s112/s141 単体 2/2、clippy 0・test 22/22。break 適用後のフル e2e 82/82 solo
   (/tmp/e2e_run17.out)+release スモーク 6/6(/tmp/rs6.out)。
   (fix #10 のコミットハッシュは次エントリに記載)
-- 2026-10-24: **fix #11(このコミット)**: docs クラスタ D-2/D-3/D-4/D-5/D-7/D-10。
+- 2026-10-24: **fix #11(コミット 1dd2dd6)**: docs クラスタ D-2/D-3/D-4/D-5/D-7/D-10。
   design/README.md=実装済み一覧更新+undo 风险注記+curses 注記。architecture.md=
   「Current implementation (as-built)」節で4点の乖離を明記(gap 本文に相互参照)。
   README=窓表示セマンティクス(D-4)/termsize→curses(D-7)/環境節を docs/dev-env.md へ
   移設しポインタ化+モデル ID 単一源=opencode.json(D-10)。design/keybindings.md=
   M-</M->(D-5)。ドキュメントのみ(コード不変)、cargo build/clippy 警告ゼロ確認。
   (fix #11 のコミットハッシュは次エントリに記載)
-- 2026-10-24: **fix #12(このコミット)**: B-3(kill_to_end_of_line の後方 mark で無音 no-op)。
+- 2026-10-24: **fix #12(コミット 2311b76)**: B-3(kill_to_end_of_line の後方 mark で無音 no-op)。
   kill 境界を「現行内の前方 mark」のみに限定(後方 mark・off-line・mark==point は
   行末まで、改行位置では行結合)。unit 1 追加(3 ケース:後方 mark で行末 kill/改行
   位置で行結合/前方 mark は領域辺で停止)、e2e s154(mark=0 の状態で C-f×3→C-k、
   新=行内容 kill+modified、旧=無音 no-op/無 modified;HEAD worktree で 2/2 FAIL・
-  新 2/2 PASS)。README Region 条項更新。clippy 0・test 23/23。フル e2e/release は次段。
+  新 2/2 PASS)。README Region 条項更新。clippy 0・test 23/23・フル e2e 83/83 solo
+  (/tmp/e2e_run18.out)・release 6/6(/tmp/rs7.out)。ゲート APPROVE(セマンティクス
+  行列監査・C-k シナリオに旧 no-op 依存なし確認)。
   (fix #12 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #13(このコミット)**: S-3(collapse で tree 配列を再構築し compact 化)。
+  旧 collapse は leaf/slot/node を push するだけで split→C-x 1 の反復で
+  `kind`/`which`/`nodes`/`leaves` が単調増加(リーク)。新 collapse は生き残る
+  leaf(=指定 leaf)の内容だけを保って配列を再構築し(root=0、単一 leaf slot、
+  nodes 空)、新しい leaf index(0)を返す。main.rs の C-x 1 は
+  `active = tree.collapse(active)` で index を再写す。unit
+  collapse_shrinks_to_one_leaf(1 分割→collapse で 1 leaf 化・index 0 化、
+  5 回の split+collapse 反復で配列が 1 のまま)追加。e2e 新シナリオなし
+  (既存 s102/s105/s122/s145 の C-x 1 フローが回帰保証: 新旧の可視挙動は同一で
+  変化は内部スロット回收のみ、unit 側で回帰防止)。clippy 0・test 24/24・
+  フル e2e 83/83 solo(/tmp/e2e_run19.out)・release 6/6(/tmp/rs8.out)。
+  ゲート APPROVE・新旧 tmux ビルド比較で s102/s105/s122/s145 相当+周辺経路が
+  全一致。Minor 記録:(a) 4 フィールドコピーは unit で追記アサート済(point/mark/
+  scroll 非 0 で分割→コピー側 collapse)。(b) 可視挙動の実差分として「C-x 1 後の
+  C-x C-f」は旧=幽霊 leaf により README 文書規則(単一窓では下分割で新窓に表示)
+  に反していた(新は文書どおり)。この経路の e2e シナリオ追加は R-3 の follow-up
+  として記録。
+  (fix #13 のコミットハッシュは次エントリに記載)

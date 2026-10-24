@@ -134,7 +134,7 @@ fn main() {
                 }
                 msg = "Cancelled".to_string();
             } else if n == 0x31 { // Ctrl-x 1: delete-other-windows
-                tree.collapse(active);
+                active = tree.collapse(active); // S-3 compaction remaps the leaf index
                 msg = "".to_string();
             } else if n == 0x32 { // Ctrl-x 2: split-window-below
                 tree.split(active, true);
