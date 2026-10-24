@@ -31,10 +31,10 @@ impl Buffer {
         // (gap_start = gap_end would be a size-0 gap: len() would inflate.)
         chars.resize(n + GAP, '\0');
         Buffer {
-            name: name,
+            name,
             filename: None,
             modified: false,
-            chars: chars,
+            chars,
             gap_start: n,
             gap_end: n + GAP,
             point: 0,
@@ -234,9 +234,7 @@ impl Buffer {
     pub fn swap_at(self: &mut Buffer, i: usize) {
         let a = self.to_index(i);
         let b = self.to_index(i + 1);
-        let tmp = self.chars[a];
-        self.chars[a] = self.chars[b];
-        self.chars[b] = tmp;
+        self.chars.swap(a, b);
         self.modified = true;
     }
 
@@ -264,10 +262,10 @@ impl Buffer {
         };
         if self.point < self.len() && self.char_at(self.point) == '\n' && self.point < hi {
             self.delete_forward();
-            return "\n".to_string();
+            "\n".to_string()
         } else {
             let stop = if le < hi { le } else { hi };
-            let n = if stop > self.point { stop - self.point } else { 0 };
+            let n = stop.saturating_sub(self.point);
             let mut cut: Vec<char> = vec![];
             let mut i = 0;
             while i < n {
@@ -275,7 +273,7 @@ impl Buffer {
                 self.delete_forward();
                 i += 1;
             }
-            return cut.iter().collect::<String>();
+            cut.iter().collect::<String>()
         }
     }
 
@@ -305,7 +303,7 @@ impl Buffer {
 
     // Scan with char_at (O(1) through the gap): no full text() copy per call
     // (B-2/B-4). Returns the match END position, as before.
-    pub fn find_forward(self: &Buffer, pat: &String, from: usize) -> Option<usize> {
+    pub fn find_forward(self: &Buffer, pat: &str, from: usize) -> Option<usize> {
         let pchars: Vec<char> = pat.chars().collect();
         let m = pchars.len();
         if m == 0 || from + m > self.len() {
@@ -331,7 +329,7 @@ impl Buffer {
     }
 
     // Backward scan: returns the match START position, as before.
-    pub fn find_backward(self: &Buffer, pat: &String, from: usize) -> Option<usize> {
+    pub fn find_backward(self: &Buffer, pat: &str, from: usize) -> Option<usize> {
         let pchars: Vec<char> = pat.chars().collect();
         let m = pchars.len();
         if m == 0 || m > self.len() || from == 0 {

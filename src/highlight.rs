@@ -13,38 +13,30 @@ pub fn hchars_of(s: &str) -> Vec<char> {
 }
 
 pub fn heq_at(cs: &[char], i: usize, w: &str) -> bool {
-    let mut k = 0;
-    for wc in w.chars() {
+    for (k, wc) in w.chars().enumerate() {
         if i + k >= cs.len() || cs[i + k] != wc {
             return false;
         }
-        k += 1;
     }
     true
 }
 
-// word slice == literal (avoids per-word String allocation)
+// word slice == literal (avoids per-word String allocation; allocation-free:
+// chars() is exact-size, zip walks cs without copying)
 fn word_eq(cs: &[char], w: &str) -> bool {
-    let mut k = 0;
-    for wc in w.chars() {
-        if k >= cs.len() || cs[k] != wc {
-            return false;
-        }
-        k += 1;
-    }
-    k == cs.len()
+    w.chars().count() == cs.len() && w.chars().zip(cs.iter()).all(|(a, b)| a == *b)
 }
 
 pub fn hwordc(c: char) -> bool {
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || (c >= '0' && c <= '9')
+    c.is_ascii_lowercase() || c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit()
 }
 
 pub fn hletter(c: char) -> bool {
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+    c.is_ascii_lowercase() || c.is_ascii_uppercase() || c == '_'
 }
 
 pub fn hdigit(c: char) -> bool {
-    c >= '0' && c <= '9'
+    c.is_ascii_digit()
 }
 
 pub fn detect(name: &str) -> usize {
@@ -73,9 +65,9 @@ pub fn detect(name: &str) -> usize {
     let ext: String = cs[dot + 1..].iter().collect();
     let ext = ext.to_ascii_lowercase();
     let exts1 = vec!["rs", "c", "h", "cpp", "cc", "hpp", "js", "ts", "go", "css"];
-    let exts2 = vec!["py", "sh", "rb", "yaml", "toml"];
-    let exts4 = vec!["md", "markdown"];
-    let exts5 = vec!["html", "xml"];
+    let exts2 = ["py", "sh", "rb", "yaml", "toml"];
+    let exts4 = ["md", "markdown"];
+    let exts5 = ["html", "xml"];
     for e in exts1.iter() {
         if ext == *e {
             return 1;
@@ -287,7 +279,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
                 if cs[j] == '\\' {
                     j += 1;
                 }
-                if j + 1 <= n && cs[j] == '\n' {
+                if j < n && cs[j] == '\n' {
                     break;
                 }
                 j += 1;
@@ -323,7 +315,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             let mut j = i;
             while j < n {
                 let d = cs[j];
-                let hexc = (d >= 'a' && d <= 'f') || (d >= 'A' && d <= 'F');
+                let hexc = ('a'..='f').contains(&d) || ('A'..='F').contains(&d);
                 if hdigit(d) || d == '.' || d == 'x' || d == 'X' || hexc {
                     j += 1;
                 } else {

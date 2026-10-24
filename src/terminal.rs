@@ -11,10 +11,7 @@ use std::sync::atomic::Ordering;
 // prompts) would not update until the 4 KiB buffer boundary.
 pub fn flush_stdout() {
     let mut so = stdout();
-    match so.flush() {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    let _ = so.flush();
 }
 
 // Put the controlling tty into raw mode so control codes arrive as raw bytes.
@@ -37,17 +34,14 @@ pub fn save_raw_mode() -> TtyGuard {
             t.c_lflag &= !(ICANON | ECHO | ECHOE | ECHOK | ECHONL | ISIG | IEXTEN);
             t.c_oflag &= !OPOST;
             t.c_iflag &= !(INLCR | IGNCR | ICRNL | IGNBRK | IXON | IXOFF);
-            match tcsetattr(fd, TCSANOW, &t) {
-                Ok(_) => {}
-                Err(_) => {}
-            }
+            let _ = tcsetattr(fd, TCSANOW, &t);
             // One-time leak (process-lifetime storage): shared with the
             // signal handlers through the static slot.
             SAVED_TERMIOS.store(Box::leak(Box::new(orig)) as *mut Termios, Ordering::Relaxed);
-            return TtyGuard { saved: Some(orig) };
+            TtyGuard { saved: Some(orig) }
         }
         Err(_) => {
-            return TtyGuard { saved: None }; // not a tty: nothing configured
+            TtyGuard { saved: None } // not a tty: nothing configured
         }
     }
 }
@@ -61,12 +55,9 @@ impl Drop for TtyGuard {
 // Restore the tty settings captured by save_raw_mode so the controlling
 // shell is not left in raw mode when the editor exits.
 pub fn restore_mode(saved: Option<Termios>) {
-    match saved {
-        Some(t) => {
-            let fd = 0;
-            let _ = tcsetattr(fd, TCSANOW, &t);
-        }
-        None => {}
+    if let Some(t) = saved {
+        let fd = 0;
+        let _ = tcsetattr(fd, TCSANOW, &t);
     }
 }
 
@@ -125,11 +116,11 @@ pub fn read_char_eof(first: u8) -> Option<char> {
     let extra: usize =
         if first < 0x80 {
             0
-        } else if first >= 0xC0 && first < 0xE0 {
+        } else if (0xC0..0xE0).contains(&first) {
             1
-        } else if first >= 0xE0 && first < 0xF0 {
+        } else if (0xE0..0xF0).contains(&first) {
             2
-        } else if first >= 0xF0 && first < 0xF8 {
+        } else if (0xF0..0xF8).contains(&first) {
             3
         } else {
             0
@@ -143,7 +134,7 @@ pub fn read_char_eof(first: u8) -> Option<char> {
         bytes.push(rb[0]);
     }
     match String::from_utf8(bytes) {
-        Ok(s) => Some(s.chars().nth(0).unwrap_or(' ')),
+        Ok(s) => Some(s.chars().next().unwrap_or(' ')),
         _ => Some(' '),
     }
 }
@@ -155,11 +146,11 @@ pub fn chars_of(s: String) -> Vec<char> {
     for c in s.chars() {
         out.push(c);
     }
-    return out;
+    out
 }
 
 pub fn str_of(cs: Vec<char>) -> String {
-    return cs.iter().collect::<String>();
+    cs.iter().collect::<String>()
 }
 
 // True when name starts with the input characters.
@@ -176,7 +167,7 @@ pub fn has_prefix(name: String, input: String) -> bool {
         }
         i += 1;
     }
-    return true;
+    true
 }
 
 // Candidates matching the typed input (all candidates when input is empty).
@@ -189,12 +180,12 @@ pub fn completions(input: String, cands: Vec<String>) -> Vec<String> {
         }
         j += 1;
     }
-    return hits;
+    hits
 }
 
 // Longest common prefix of all candidates.
 pub fn common_prefix(list: Vec<String>) -> String {
-    if list.len() == 0 {
+    if list.is_empty() {
         return "".to_string();
     }
     let first = chars_of(list[0].clone());
@@ -219,7 +210,7 @@ pub fn common_prefix(list: Vec<String>) -> String {
         }
         i += 1;
     }
-    return str_of(out);
+    str_of(out)
 }
 
 // Path candidates from the filesystem: completes the tail after the last '/'
@@ -258,51 +249,40 @@ pub fn file_candidates(input: String) -> Vec<String> {
     let tail_s = str_of(tail);
     let head_s = str_of(head);
     let mut cands: Vec<String> = vec![];
-    match std::fs::read_dir(dir) {
-        Ok(rd) => {
-            for it in rd {
-                match it {
-                    Ok(e) => {
-                        match e.path().to_str() {
-                            Some(fp) => {
-                                let fps = fp.to_string();
-                                let pcs = chars_of(fps);
-                                let mut last = 0;
-                                let mut k = 0;
-                                while k < pcs.len() {
-                                    if pcs[k] == '/' {
-                                        last = k + 1;
-                                    }
-                                    k += 1;
-                                }
-                                let mut nm: Vec<char> = vec![];
-                                k = last;
-                                while k < pcs.len() {
-                                    nm.push(pcs[k]);
-                                    k += 1;
-                                }
-                                let nms = str_of(nm);
-                                if has_prefix(nms.clone(), tail_s.clone()) {
-                                    cands.push(format!("{}{}", head_s, nms));
-                                }
-                            }
-                            None => {}
-                        }
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            if let Some(fp) = e.path().to_str() {
+                let fps = fp.to_string();
+                let pcs = chars_of(fps);
+                let mut last = 0;
+                let mut k = 0;
+                while k < pcs.len() {
+                    if pcs[k] == '/' {
+                        last = k + 1;
                     }
-                    Err(_) => {}
+                    k += 1;
+                }
+                let mut nm: Vec<char> = vec![];
+                k = last;
+                while k < pcs.len() {
+                    nm.push(pcs[k]);
+                    k += 1;
+                }
+                let nms = str_of(nm);
+                if has_prefix(nms.clone(), tail_s.clone()) {
+                    cands.push(format!("{}{}", head_s, nms));
                 }
             }
         }
-        Err(_) => {}
     }
-    return cands;
+    cands
 }
 
 // Echo width of a candidate list: the two separator spaces plus every
 // candidate followed by one space (the format echoed by Tab).
 pub fn list_width(list: Vec<String>) -> usize {
     let mut w = 0;
-    if list.len() > 0 {
+    if !list.is_empty() {
         w = 2;
         let mut j = 0;
         while j < list.len() {
@@ -310,7 +290,7 @@ pub fn list_width(list: Vec<String>) -> usize {
             j += 1;
         }
     }
-    return w;
+    w
 }
 
 // The candidate whose echoed span covers the cursor position cur in the
@@ -329,7 +309,7 @@ pub fn cand_at(list: Vec<String>, inp: usize, cur: usize) -> String {
         s += l + 1;
         j += 1;
     }
-    return "".to_string();
+    "".to_string()
 }
 
 // Park the real terminal cursor at echo-column cur of the minibuffer row
@@ -379,9 +359,9 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
         let b = rb[0];
         if b == 0x0D || b == 0x0A { // Enter: the candidate under the cursor wins
             let mut ret = str_of(out.clone());
-            if list.len() > 0 {
+            if !list.is_empty() {
                 let sel = cand_at(list.clone(), out.len(), cur);
-                if sel.len() > 0 {
+                if !sel.is_empty() {
                     ret = sel;
                 }
             }
@@ -402,7 +382,7 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
             let hits = completions(inp.clone(), pool);
             if hits.len() == 1 {
                 cur = out.len();
-                if list.len() > 0 { // input changes: the old list echo is stale
+                if !list.is_empty() { // input changes: the old list echo is stale
                     list = vec![];
                     print!("\x1b[{};{}H\x1b[K", row, plen + cur + 1);
                 }
@@ -417,7 +397,7 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                 flush_stdout();
             } else if hits.len() > 1 {
                 cur = out.len();
-                if list.len() > 0 { // relisting: erase the old list echo
+                if !list.is_empty() { // relisting: erase the old list echo
                     print!("\x1b[{};{}H\x1b[K", row, plen + cur + 1);
                 }
                 let cp = common_prefix(hits.clone());
@@ -507,13 +487,10 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
         if cur > out.len() {
             cur = out.len();
         }
-        let c = match read_char_eof(b) {
-            Some(c) => c,
-            None => return None, // EOF mid-codepoint: cancel this prompt
-        };
+        let c = read_char_eof(b)?; // EOF mid-codepoint: cancel this prompt
         out.insert(cur, c);
         cur += 1;
-        if list.len() > 0 {
+        if !list.is_empty() {
             list = vec![]; // input edited: the listed candidates are stale
         }
         echo_tail(row, plen, cur - 1, &out);
@@ -526,23 +503,23 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
 // (status) row so it replaces the status line like Emacs minibuffer prompts.
 // EOF collapses to the empty string (= cancel), same as Ctrl-g.
 pub fn read_line(prompt: String) -> String {
-    return read_line_c(prompt, vec![], false).unwrap_or("".to_string());
+    read_line_c(prompt, vec![], false).unwrap_or("".to_string())
 }
 
 // Minibuffer line with Tab completion over given candidates (buffer names).
 pub fn read_line_buffers(prompt: String, names: Vec<String>) -> String {
-    return read_line_c(prompt, names, false).unwrap_or("".to_string());
+    read_line_c(prompt, names, false).unwrap_or("".to_string())
 }
 
 // Minibuffer line with Tab completion over the filesystem.
 pub fn read_line_files(prompt: String) -> String {
-    return read_line_c(prompt, vec![], true).unwrap_or("".to_string());
+    read_line_c(prompt, vec![], true).unwrap_or("".to_string())
 }
 
 // Minibuffer line exposing the EOF distinction (None): for call sites where
 // "stdin closed" must behave differently from "cancelled" (exit confirm).
 pub fn read_line_eof(prompt: String, cands: Vec<String>, file_comp: bool) -> Option<String> {
-    return read_line_c(prompt, cands, file_comp);
+    read_line_c(prompt, cands, file_comp)
 }
 
 #[cfg(test)]

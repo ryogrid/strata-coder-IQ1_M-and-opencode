@@ -39,7 +39,7 @@
 - [x] **T-4**: read(2) エラーを EOF と同一視。Err では再試行ループとし Ok(0) をもって EOF とする(std が EINTR を再試行する事実を確認したらコメントで明文化)。04 §T-4 / Design Doc A → 再試行ループ実装。実測: std の StdinLock::read は EINTR を自動再試行しない(Err(Interrupted) を返す)ため explicit ループが本体。コメント明記済み(fix #1)
 - [x] **H-2**: Rust のライフタイム `'a` を文字列として誤色。lang1 の `'` 処理改善。05 §H-2 / Design Doc B → 3条件(同一行閉じ/j>=i+2/内容が string 的)採用。フィクスチャ `fn f<'de>(x: &'de str) {}` をテストで固定(fix #2)
 - [x] **H-3**: detect が拡張子の大文字小文字を区別しない(FILE.RS 無装飾)。05 §H-3 / Design Doc B → ASCII 小文字化比較+fizz マトリクステスト(fix #2)
-- [ ] **R-1**: clippy 94 件。`cargo clippy --fix` + 手当てで掃除。完了ゲート: `cargo clippy` 警告0行(AGENT.md に clippy ルール追記)。06 §R-1
+- [x] **R-1**: clippy 94 件。`cargo clippy --fix` + 手当てで掃除。完了ゲート: `cargo clippy` 警告0行(AGENT.md に clippy ルール追記)。06 §R-1 → 102 件を `cargo clippy --fix`(92 自動)+ 手当て(&String→&str、ループカウンタ→enumerate、checked_div、if let、word_eq 書き直し、`let _ =` 受信、self-insert 2 分岐マージ)で **0 行**。AGENT.md に clippy ゼロ則を追記。e2e 76/76+release スモーク 6/6 PASS(fix #6)
 - [x] **R-2**: e2e が debug のみ。release での代表スモーク追加。06 §R-2 → `test-design/release_smoke.sh`(s02/s103/s110/s112/s140/s141 を release バイナリで実行、ビルド自動、6/6 PASS)。溢れ系 s141 を含む(fix #5)
 - [ ] **R-3**: window/screen の単体テスト追加(buffer=find 系は B-9、highlight は H-8 が担当)。06 §R-3
 - [x] **R-4**: run.out/smoke.txt/demo.txt 未整理。.gitignore 追記。06 §R-4 → 3 ファイルを .gitignore に追加(fix #5)
@@ -192,6 +192,17 @@
 - **clippy 実測ベースライン**: HEAD=109 → fix #2 作業ツリー=118(ゲート計測)。
   新規カテゴリ(manual_repeat_n/partialeq_to_none/unnecessary_cast/ptr_arg×2)は
   ドライブバイ修正済み(100 に減少)。R-1 の対象として計上。
+- **clippy スイープの手順(R-1 実施記録)**: (1) `cargo clippy --fix --bin emur` で
+  安全適用分(92/102)を一括、(2) 残りは手で lint を読んで解消。今回の手当て内訳:
+  `&String`→`&str`(ptr_arg)、明示カウンタループ→`enumerate`(explicit_counter_loop)、
+  `if x>0 {a/x} else {0}`→`checked_div().unwrap_or()`(manual_checked_division)、
+  単一パターン `match Some/None`→`if let`、`is_ok()` 破棄→`let _ =`(unused_must_use 系)、
+  (3) **自動修正の産物を点検**: `TtyGuard { saved: None }// comment` のコメント密着と
+  `if so.flush().is_ok() {}` 空ブロックは sed 由来の傷。機械修正後はビルド/テストで
+  なく diff を目視する。(4) self-insert の ASCII/UTF-8 分岐は本体が同一なので
+  `(0x20..0x7f).contains(&b) || b >= 0x80` にマージ(分岐重複 lint 対策)。
+- **clippy ゼロは AGENT.md のビルド則に明文化済み**: 今後 `cargo clippy` の
+  `warning:` 0 行が全コミットのゲート。`#[allow(...)]` による黙殺は禁止(警告則と同じ)。
 - **e2e s21 の Flake 根本原因(既存)**: 単発キャプチャが**描画と競合**する
   (C-x 3 適用前の 2 窓状態、またはフレーム先頭の screen_clear 直後に下窓が
   未描画)。`expect_occ`/`expect_count` 系(件数アサート)は分割直後の
@@ -232,6 +243,13 @@
   Failed to open 表示。e2e s144〜s147 追加。コミットメッセージの TODO 原文「Quit 相当」は
   メッセージ表示に方針変更(理由を TODO に記録)。ゲート REJECT の B-1(C-x C-c キャンセル
   が Undefined で上書き)は鎖先頭 else if 連結で解消、76/76 PASS。
-- 2026-10-24: **fix #5(このコミット)**: R-2(release スモーク `test-design/release_smoke.sh`
+- 2026-10-24: **fix #5(コミット dadc431)**: R-2(release スモーク `test-design/release_smoke.sh`
   6 シナリオ PASS)+R-4(.gitignore 3 項目)。
-  (fix #5 のコミットハッシュは次エントリに記載)
+- 2026-10-24: **fix #6(このコミット)**: R-1(clippy スイープ)。102 件 → `cargo clippy --fix`
+  で 92 件自動適用+残り 10 件を手当てして **clippy 警告 0 行**。AGENT.md に clippy ゼロ則追記。
+  全 6 ファイル+AGENT.md の変更。e2e 76/76、release スモーク 6/6、cargo test 16/16。
+  コミット前ゲートレビュー APPROVE(全 62 hunk の意味変化監査、Blocker/Major なし)。
+  Minor drive-by: terminal.rs EOF コメント復元、word_eq を allocation-free zip 版に
+  (旧版はキーワード毎 Vec 確保で hot path)、自動修正の産物(`}//` 密着/空 if)掃除。
+  word_eq 置換後は unit 16/16+e2e s103/s105(ハイライト実色アサート)+release スモーク 6/6 で検証。
+  (fix #6 のコミットハッシュは次エントリに記載)

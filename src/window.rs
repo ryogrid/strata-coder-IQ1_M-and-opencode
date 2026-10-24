@@ -39,7 +39,7 @@ pub fn new_tree(buffer: usize) -> Tree {
     Tree {
         kind: vec![0],
         which: vec![0],
-        leaves: vec![Leaf { buffer: buffer, point: 0, mark: 0, scroll: 0 }],
+        leaves: vec![Leaf { buffer, point: 0, mark: 0, scroll: 0 }],
         nodes: vec![],
         root: 0,
     }
@@ -63,7 +63,7 @@ impl Tree {
 
     pub fn layout(self: &Tree, slot: usize, top: usize, height: usize, col: usize, width: usize) -> Vec<Frame> {
         if self.kind[slot] == 0 {
-            vec![Frame { leaf: self.which[slot], kind: 0, top: top, height: height, col: col, width: width }]
+            vec![Frame { leaf: self.which[slot], kind: 0, top, height, col, width }]
         } else {
             let k = self.which[slot];
             let vertical = self.nodes[k].vertical;
@@ -71,12 +71,12 @@ impl Tree {
                 // Stacked windows share one boundary row (drawn as '-').
                 let h1 = height / 2;
                 let mut a = self.layout(self.nodes[k].a, top, h1, col, width);
-                a.push(Frame { leaf: 0, kind: 1, top: top + h1, height: 1, col: col, width: width });
+                a.push(Frame { leaf: 0, kind: 1, top: top + h1, height: 1, col, width });
                 a.extend(self.layout(self.nodes[k].b, top + h1 + 1, height - h1 - 1, col, width));
                 a
             } else if vertical && height >= 2 {
                 // Too cramped for a boundary row: fall back to plain split.
-                let h1 = (height + 1) / 2;
+                let h1 = height.div_ceil(2);
                 let mut a = self.layout(self.nodes[k].a, top, h1, col, width);
                 a.extend(self.layout(self.nodes[k].b, top + h1, height - h1, col, width));
                 a
@@ -84,11 +84,11 @@ impl Tree {
                 // Side-by-side windows share one boundary column (drawn as '|').
                 let w1 = width / 2;
                 let mut a = self.layout(self.nodes[k].a, top, height, col, w1);
-                a.push(Frame { leaf: 0, kind: 2, top: top, height: height, col: col + w1, width: 1 });
+                a.push(Frame { leaf: 0, kind: 2, top, height, col: col + w1, width: 1 });
                 a.extend(self.layout(self.nodes[k].b, top, height, col + w1 + 1, width - w1 - 1));
                 a
             } else if width >= 2 {
-                let w1 = (width + 1) / 2;
+                let w1 = width.div_ceil(2);
                 let mut a = self.layout(self.nodes[k].a, top, height, col, w1);
                 a.extend(self.layout(self.nodes[k].b, top, height, col + w1, width - w1));
                 a
@@ -138,7 +138,7 @@ impl Tree {
             self.kind.push(0);
             self.which.push(copy_idx);
             let k = self.nodes.len();
-            self.nodes.push(Node { vertical: vertical, a: sa, b: sb });
+            self.nodes.push(Node { vertical, a: sa, b: sb });
             self.kind[s] = 1;
             self.which[s] = k;
             return true;

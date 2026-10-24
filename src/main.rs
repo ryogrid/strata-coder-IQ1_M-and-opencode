@@ -14,10 +14,7 @@ fn read_file(path: String) -> Result<String, String> {
 }
 
 fn write_file(path: String, text: String) -> bool {
-    match std::fs::write(path, text.as_bytes()) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    std::fs::write(path, text.as_bytes()).is_ok()
 }
 
 fn find_buffer(bufs: &[buffer::Buffer], name: String) -> Vec<usize> {
@@ -28,7 +25,7 @@ fn find_buffer(bufs: &[buffer::Buffer], name: String) -> Vec<usize> {
         }
         j += 1;
     }
-    return vec![];
+    vec![]
 }
 
 // Quit confirmation (Emacs: "Modified buffers exist; exit anyway? (yes|no)"):
@@ -48,15 +45,15 @@ fn confirm_exit(bufs: &[buffer::Buffer]) -> bool {
     }
     let sel = terminal::read_line_eof("Modified buffers exist; exit anyway? (yes|no) ".to_string(), vec![], false);
     match sel {
-        None => return true, // EOF: no input possible, exit with data loss
-        Some(s) => return s == "yes".to_string() || s == "y".to_string(),
+        None => true, // EOF: no input possible, exit with data loss
+        Some(s) => s == "yes" || s == "y",
     }
 }
 
 fn main() {
     // Visible panic report; the actual tty restore happens through TtyGuard's
     // Drop (unwinding runs drops), so no panic can leave the shell in raw mode.
-    let _ = std::panic::set_hook(Box::new(|info| {
+    std::panic::set_hook(Box::new(|info| {
         eprintln!("emur panicked - restoring terminal: {}", info);
     }));
     let _guard = terminal::save_raw_mode(); // bound by name: Drop at end of main
@@ -136,7 +133,7 @@ fn main() {
                 msg = "".to_string();
             } else if n == 0x06 { // Ctrl-x Ctrl-f: open file; in a lone window split below, in a split tree load into the active window
                 let path = terminal::read_line_files("Find file: ".to_string());
-                if path.len() > 0 {
+                if !path.is_empty() {
                     match read_file(path.to_string()) {
                         Err(e) => {
                             // M-9: an unreadable file does NOT become an empty
@@ -169,7 +166,7 @@ fn main() {
                 }
             } else if n == 0x13 { // Ctrl-x Ctrl-s: save
                 let path = bufs[bi].filename.clone().map(|p| p.to_string()).unwrap_or("".to_string());
-                if path.len() > 0 {
+                if !path.is_empty() {
                     if write_file(path.to_string(), bufs[bi].text()) {
                         bufs[bi].modified = false;
                         msg = format!("Wrote {}", path);
@@ -181,7 +178,7 @@ fn main() {
                 }
             } else if n == 0x17 { // Ctrl-x Ctrl-w: write-file
                 let path = terminal::read_line_files("Write file: ".to_string());
-                if path.len() > 0 {
+                if !path.is_empty() {
                     // M-8: the filename binds ONLY on success; a failed
                     // write leaves save-target (and C-x C-s) untouched.
                     if write_file(path.to_string(), bufs[bi].text()) {
@@ -194,7 +191,7 @@ fn main() {
                 }
             } else if n == 0x09 { // Ctrl-x Ctrl-i: insert-file
                 let path = terminal::read_line_files("Insert file: ".to_string());
-                if path.len() > 0 {
+                if !path.is_empty() {
                     match read_file(path.to_string()) {
                         Ok(text) => {
                             bufs[bi].insert_string(&text);
@@ -215,7 +212,7 @@ fn main() {
                     // loop's own EOF read then exits (M-4 policy: unconfirmed
                     // exit loses data, which is documented).
                     let sel = terminal::read_line(format!("Kill buffer {}? (yes|no) ", name));
-                    sel == "yes".to_string() || sel == "y".to_string()
+                    sel == "yes" || sel == "y"
                 };
                 if !proceed {
                     msg = "Cancelled".to_string();
@@ -237,14 +234,14 @@ fn main() {
                 let prompt = if n == 0x02 { format!("Buffers: {} Enter=next, name: ", names) } else { "Switch to buffer: ".to_string() };
                 let sel = terminal::read_line_buffers(prompt, bnames);
                 let mut ti = 999999;
-                if sel.len() > 0 {
+                if !sel.is_empty() {
                     let hit = find_buffer(&bufs, sel.to_string());
-                    if hit.len() > 0 { ti = hit[0]; }
+                    if !hit.is_empty() { ti = hit[0]; }
                 } else if n == 0x02 { // Ctrl-x Ctrl-b + Enter: cycle to the next buffer
                     let nxt = if bi + 1 < bufs.len() { bi + 1 } else { 0 };
                     ti = nxt;
                 }
-                if ti == 999999 && sel.len() == 0 {
+                if ti == 999999 && sel.is_empty() {
                     msg = "Cancelled".to_string();
                 } else if ti < bufs.len() {
                     tree.leaves[active].buffer = ti;
@@ -279,7 +276,7 @@ fn main() {
             let szs = curses::canvas::get_size();
             let prow = if szs.rows > 0 { szs.rows } else { 24 };
             print!("\x1b[{};1H\x1b[2K", prow);
-            print!("{}", "Search: ".to_string());
+            print!("Search: ");
             terminal::flush_stdout();
             let mut cancelled = false;
             loop {
@@ -310,8 +307,8 @@ fn main() {
                 }
                 if c2 == 0x07 { cancelled = true; break; } // Ctrl-g: cancel
                 if c2 == 0x7f { // backspace: drop the last query char
-                    if qs.len() > 0 { qs.pop(); }
-                    if qs.len() > 0 {
+                    if !qs.is_empty() { qs.pop(); }
+                    if !qs.is_empty() {
                         let q2 = terminal::str_of(qs.clone());
                         let hit = bufs[bi].find_forward(&q2, 0);
                         if let Some(end) = hit {
@@ -325,7 +322,7 @@ fn main() {
                 let from = last + 1;
                 let mut echo_ch = ' '.to_string(); // char to echo on the search line
                 if c2 == 0x13 { // Ctrl-s while searching: repeat the query
-                    if qs.len() == 0 { continue; } // still waiting for chars
+                    if qs.is_empty() { continue; } // still waiting for chars
                     attempt = qs.clone();
                 } else { // a printable char extends the query
                     let cc = match terminal::read_char_eof(c2) {
@@ -349,7 +346,7 @@ fn main() {
                     }
                     terminal::flush_stdout();
                 } else {
-                    print!("{}", "\x07".to_string()); // bell: char ignored
+                    print!("\x07"); // bell: char ignored
                     terminal::flush_stdout();
                 }
             }
@@ -361,7 +358,7 @@ fn main() {
             }
         } else if b == 0x12 { // Ctrl-r: reverse search
             let q = terminal::read_line("Reverse find: ".to_string());
-            if q.len() > 0 {
+            if !q.is_empty() {
                 let hit = bufs[bi].find_backward(&q, bufs[bi].point);
                 if let Some(start) = hit {
                     bufs[bi].point = start;
@@ -430,7 +427,7 @@ fn main() {
             bufs[bi].end_of_line(); // Ctrl-e
         } else if b == 0x0c { // Ctrl-l: go-to-line (minibuffer reads a line number)
             let q = terminal::read_line("Go to line: ".to_string());
-            if q.len() == 0 {
+            if q.is_empty() {
                 msg = "Cancelled".to_string();
             } else {
                 // M-1: digits-only gate (parse alone accepts a leading '+'),
@@ -466,22 +463,17 @@ fn main() {
             // Ctrl-space's NUL - a literal NUL gets inserted once. Bounded:
             // the loop-top read_byte_eof then ends the session. (Design Doc A)
             let n = terminal::read_byte();
-            match terminal::read_char_eof(n) {
-                Some(c) => bufs[bi].insert_char(c),
-                None => {} // EOF: insert nothing
-            }
+            if let Some(c) = terminal::read_char_eof(n) {
+                bufs[bi].insert_char(c);
+            } // EOF: insert nothing
         } else if b == 0x0a || b == 0x0d {
             bufs[bi].insert_char('\n'); // Ctrl-j / Ctrl-m: newline
-        } else if b >= 0x20 && b < 0x7f {
-            match terminal::read_char_eof(b) { // self-insert (ASCII)
-                Some(c) => bufs[bi].insert_char(c),
-                None => {}
-            }
-        } else if b >= 0x80 {
-            match terminal::read_char_eof(b) { // self-insert (UTF-8)
-                Some(c) => bufs[bi].insert_char(c),
-                None => {} // EOF mid-codepoint: insert nothing
-            }
+        } else if (0x20..0x7f).contains(&b) || b >= 0x80 {
+            // self-insert (ASCII, and UTF-8 lead bytes: read_char_eof consumes
+            // the continuation bytes)
+            if let Some(c) = terminal::read_char_eof(b) {
+                bufs[bi].insert_char(c);
+            } // EOF: insert nothing
         }
         if !moved {
             tree.leaves[active].point = bufs[bi].point;

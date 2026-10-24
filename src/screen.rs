@@ -38,7 +38,7 @@ fn view_of(views: &mut [Option<BufView>], bufs: &[Buffer], bidx: usize) {
         let lines = split_lines(&chars);
         let offs = line_offsets(&lines);
         let toks = styles(&chars, detect(&buf.name));
-        views[bidx] = Some(BufView { chars: chars, lines: lines, offs: offs, toks: toks });
+        views[bidx] = Some(BufView { chars, lines, offs, toks });
     }
 }
 
@@ -74,8 +74,7 @@ pub fn line_offsets(lines: &[String]) -> Vec<usize> {
 pub fn point_pos(chars: &[char], point: usize) -> Vec<usize> {
     let mut pline = 0;
     let mut pcol = 0;
-    let mut seen = 0;
-    for c in chars {
+    for (seen, c) in chars.iter().enumerate() {
         if seen >= point {
             break;
         }
@@ -85,7 +84,6 @@ pub fn point_pos(chars: &[char], point: usize) -> Vec<usize> {
         } else {
             pcol += 1;
         }
-        seen += 1;
     }
     vec![pline, pcol]
 }
@@ -148,7 +146,7 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
             let mut dash = "".to_string();
             let mut q = 0;
             while q < frames[i].width {
-                dash = dash + "-";
+                dash += "-";
                 q += 1;
             }
             draw_cell(frames[i].top, frames[i].col, dash, frames[i].width, vec![]);
@@ -196,7 +194,7 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
             st_line = pline + 1;
             st_total = view.lines.len();
             let len = buf.len();
-            st_pct = if len > 0 { tree.leaves[leaf_idx].point * 100 / len } else { 0 };
+            st_pct = (tree.leaves[leaf_idx].point * 100).checked_div(len).unwrap_or(0);
             crow = frames[i].top + (pline - tree.leaves[leaf_idx].scroll);
             let maxc = if frames[i].width > 0 { frames[i].width - 1 } else { 0 };
             let pc = if pcol < maxc { pcol } else { maxc };
@@ -206,7 +204,7 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         i += 1;
     }
 
-    let label = if msg.len() > 0 {
+    let label = if !msg.is_empty() {
         msg.to_string()
     } else if abuf.modified {
         format!("Buf {} *", abuf.name).to_string()
@@ -250,8 +248,7 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
     let mut chars: Vec<char> = vec![];
     let mut stys: Vec<usize> = vec![];
     let src: Vec<char> = line.chars().collect();
-    let mut idx = 0;
-    for c in src {
+    for (idx, c) in src.into_iter().enumerate() {
         if chars.len() >= width {
             break;
         }
@@ -260,7 +257,6 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
         let d = if c < ' ' { ' ' } else { c };
         chars.push(d);
         stys.push(if idx < styles.len() { styles[idx] } else { 0 });
-        idx += 1;
     }
     while chars.len() < width {
         chars.push(' ');
