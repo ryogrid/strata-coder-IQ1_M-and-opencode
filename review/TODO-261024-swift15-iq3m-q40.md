@@ -90,7 +90,9 @@
 - [ ] **H-7**: スタイルコードを enum 化。05 §H-7
 - [x] **H-8**: detect/styles の単体テスト追加。05 §H-8 → fix #2 で追加(detect 拡張子マトリクス、lifetime フィクスチャ、string/char リテラル、json、md)
 - [ ] **R-5**: curses 依存縮小(size 検出のみ)/[profile] 注記。06 §R-5
-- [ ] **R-6**: CI 追加(build+test+clippy+e2e)。06 §R-6 → 導入時 `cargo clippy --all-targets` の既存 test コード 17 lint(fix #7 ゲート検出。AGENT.md の現行ゲートは plain `cargo clippy`=0 で合格)も掃除してゲートに含めるとよい
+- [x] **R-6**: CI 追加(build+test+clippy+e2e)。06 §R-6 → 導入時 `cargo clippy --all-targets` の既存 test コード 17 lint(fix #7 ゲート検出。AGENT.md の現行ゲートは plain `cargo clippy`=0 で合格)も掃除してゲートに含めるとよい
+  - 実 lint 数は 18(12 `unnecessary to_string`+5 `== ""`+1 owned 比較。buffer.rs 13・terminal.rs 5)を全て代码側で掃除(`&"x".to_string()`→`"x"`(find_* は元から `&str` 引数)、`== ""`→`.is_empty()`、`cut == "world".to_string()`→`cut == "world")。`--all-targets`=0 を AGENT.md ゲート化(fix #15)
+  - `.github/workflows/ci.yml`: 単一 jobs(gates)/ubuntu-24.04で build(`-D warnings`)・clippy(`--all-targets -- -D warnings`)・unit・e2e(tmux 同梱ランナー、単一 job で tmux 競合なし)。`--locked`・branches:[master] 付き(fix #15)
 - [ ] **D-6**: keybindings.md の C-d 二重掲載・C-\ 凡例削除。07 §D-6
 - [ ] **D-8**: C-s/C-r/C-l minibuffer は補完なしの明記。07 §D-8
 - [x] **D-9**: README:79 に「全読み込みエラーで空で開く」注記(M-9 と同時)。07 §D-9 → M-9 と同時に新挙動(Failed to open 表示・filename 未バインド)を README へ記述(fix #4)
@@ -407,7 +409,7 @@
   に反していた(新は文書どおり)。この経路の e2e シナリオ追加は R-3 の follow-up
   として記録。
   (fix #13 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #14(このコミット)**: R-3(window/screen 単体テスト)+fix #13 ゲート follow-up。
+- 2026-10-25: **fix #14(コミット b86d228)**: R-3(window/screen 単体テスト)+fix #13 ゲート follow-up。
   window.rs: layout ジオメトリ(80 列で左 40/境界 col 40/右 39、24 行で 12+境界行+11)、
   狭域フォールバック(行/列境界なしの素分割、幅 1 は非分割)、flatten ネスト順序、
   find_slot 未探索=`kind.len()`、split 未知 leaf=false。screen.rs: split_lines(末尾空行)、
@@ -420,3 +422,16 @@
   leaf=インデッシュ返却+不変アサート、最小境界ジオメトリ(高さ 3=1+行+1、幅 3=1+列+1)、
   split_lines("\n")=["",""]。
   (fix #14 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #15(このコミット)**: R-6(CI 導入 + test コード lint 全掃除)。
+  `cargo clippy --all-targets` の既存 18 lint(buffer.rs 13: `&"x".to_string()`→`"x"`/
+  `cut == "world".to_string()`→`cut == "world"。terminal.rs 5: `== ""`→`.is_empty()`)を
+  掃除して 0 に(test コードのみ、非 test コードは不変)。AGENT.md の clippy ゲートを
+  `--all-targets` 版に拡大。`.github/workflows/ci.yml` 新規(push:master/PR、ubuntu-24.04
+  単一 job: `RUSTFLAGS=-D warnings` build `--all-targets`→clippy `--all-targets --
+  -D warnings`→unit→e2e(tmux 同梱。単一 job で tmux 競合回避、release smoke は非収録))。
+  `--locked`・`branches:[master]` はゲート Minor 織り込み。curses 0.1.0 は純 Rust
+  (jackpot51 系 ANSI curses、C コンパニ不要・libtinfo 非依存とゲートで確認)。
+  unit 30/30・`RUSTFLAGS=-D warnings` build/test 通過・clippy `--all-targets` 0。
+  非 test コード不変のため e2e 再実行不要(binary 内容同一)。ゲート APPROVE。
+  初回 CI 実行結果の確認は push 後(次エントリに記録)。
+  (fix #15 のコミットハッシュは次エントリに記載)

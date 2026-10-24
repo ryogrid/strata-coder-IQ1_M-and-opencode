@@ -574,10 +574,10 @@ fn candidate_under_cursor() {
     assert!(cand_at(l.clone(), 1, 5) == "aa"); // caret after "aa"
     assert!(cand_at(l.clone(), 1, 6) == "ab"); // caret before "ab"
     assert!(cand_at(l.clone(), 1, 8) == "ab"); // caret after "ab"
-    assert!(cand_at(l.clone(), 1, 1) == "");   // caret in the input
-    assert!(cand_at(l.clone(), 1, 2) == "");   // caret in the separator gap
-    assert!(cand_at(l.clone(), 1, 9) == "");   // caret past the trailing space
-    assert!(cand_at(vec![], 0, 0) == "");
+    assert!(cand_at(l.clone(), 1, 1).is_empty()); // caret in the input
+    assert!(cand_at(l.clone(), 1, 2).is_empty()); // caret in the separator gap
+    assert!(cand_at(l.clone(), 1, 9).is_empty()); // caret past the trailing space
+    assert!(cand_at(vec![], 0, 0).is_empty());
 }
 #[test]
 fn cells_of_cjk() {
@@ -601,7 +601,7 @@ fn cand_at_cjk_cells() {
     assert!(cand_at(l.clone(), 3, 5) == "あa.txt"); // caret at cand1 start
     assert!(cand_at(l.clone(), 3, 12) == "あa.txt"); // cand1 cell-end (chars: miss)
     assert!(cand_at(l.clone(), 3, 13) == "あi.txt"); // cand2 start
-    assert!(cand_at(l.clone(), 3, 4) == ""); // separator gap
+    assert!(cand_at(l.clone(), 3, 4).is_empty()); // separator gap
 }
 #[test]
 fn caret_col_units() {

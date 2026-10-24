@@ -1,0 +1,27 @@
+name: CI
+# Gates (AGENT.md): warning-free build, warning-free clippy INCLUDING
+# test code, unit tests, and the tmux-driven e2e suite. Single job on
+# purpose: e2e.sh shares the emu-e2e-* tmux session prefix, so no
+# tmux-using suite may run concurrently (R-6).
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: build (warning-free)
+        run: RUSTFLAGS="-D warnings" cargo build --locked --all-targets
+      - name: clippy (warning-free, incl. test code)
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: unit tests
+        run: cargo test --locked
+      - name: e2e suite (tmux, preinstalled on ubuntu runners)
+        run: bash test-design/e2e.sh

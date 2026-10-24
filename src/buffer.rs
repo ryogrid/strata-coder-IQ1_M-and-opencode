@@ -461,22 +461,22 @@ fn c_o_fresh_and_refill_boundary() {
 #[test]
 fn find_matrix() {
     let b = Buffer::new("t".to_string(), "hello hello".to_string());
-    assert!(b.find_forward(&"hello".to_string(), 0) == Some(5));
-    assert!(b.find_forward(&"hello".to_string(), 1) == Some(11));
-    assert!(b.find_forward(&"hello".to_string(), 7).is_none());
-    assert!(b.find_forward(&"x".to_string(), 0).is_none());
-    assert!(b.find_forward(&"".to_string(), 0).is_none());
-    assert!(b.find_forward(&"hello".to_string(), 9).is_none()); // from + m > len
-    assert!(b.find_backward(&"hello".to_string(), 11) == Some(6));
-    assert!(b.find_backward(&"hello".to_string(), 5) == Some(0));
-    assert!(b.find_backward(&"hello".to_string(), 0).is_none());
-    assert!(b.find_backward(&"x".to_string(), 5).is_none());
+    assert!(b.find_forward("hello", 0) == Some(5));
+    assert!(b.find_forward("hello", 1) == Some(11));
+    assert!(b.find_forward("hello", 7).is_none());
+    assert!(b.find_forward("x", 0).is_none());
+    assert!(b.find_forward("", 0).is_none());
+    assert!(b.find_forward("hello", 9).is_none()); // from + m > len
+    assert!(b.find_backward("hello", 11) == Some(6));
+    assert!(b.find_backward("hello", 5) == Some(0));
+    assert!(b.find_backward("hello", 0).is_none());
+    assert!(b.find_backward("x", 5).is_none());
     // the gap must not distort scans: edit, then search the edited text
     let mut m = Buffer::new("t".to_string(), "hello hello".to_string());
     m.point = 5;
     m.insert_char('!');
-    assert!(m.find_forward(&"o! ".to_string(), 0) == Some(7));
-    assert!(m.find_backward(&"! he".to_string(), 12) == Some(5));
+    assert!(m.find_forward("o! ", 0) == Some(7));
+    assert!(m.find_backward("! he", 12) == Some(5));
 }
 #[test]
 fn insert_string_advances_point() {
@@ -507,7 +507,7 @@ fn editing_and_navigation() {
     b.point = 10;
     b.mark = b.point; // no active region: kill goes to end of line
     let cut = b.kill_to_end_of_line();
-    assert!(cut == "world".to_string());
+    assert!(cut == "world");
     assert!(b.text() == "hello big ");
     b.point = 10;
     b.transpose_chars();
