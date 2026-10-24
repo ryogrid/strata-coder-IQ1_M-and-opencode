@@ -2,18 +2,25 @@
 // binary split tree), status line pinned to the bottom row of the screen
 // (always displayed: buffer name, modified flag, cursor line/total, and
 // position percentage), terminal cursor parked at the active window's point.
-// Screen via the curses crate; manual ANSI fallback when the terminal
-// size is unknown (not a tty) or curses is not available.
+// Screen via the termsize crate (SIZE query only, R-5); manual ANSI
+// rendering is used in all cases, with a fixed 24x80 fallback when the
+// size is unknown (not a tty).
 use super::buffer::Buffer;
 use super::window::Tree;
 use super::highlight::styles;
 use super::highlight::detect;
 use super::highlight::hchars_of;
-use curses::canvas::get_size;
 
-// Hand-rolled ANSI only: the curses crate emits 0-based home sequences
-// (ESC[0;0H) and attribute resets that ConPTY-based terminals (Windows
-// Terminal) misprocess, which shifts each line by one char. Manual moves
+// Terminal SIZE via termsize directly (R-5: the curses dependency was a
+// thin wrapper around exactly this call). rows == 0 / cols == 0 means
+// "size unknown" (not a tty); callers apply their own fallback.
+pub fn term_size() -> termsize::Size {
+    termsize::get().unwrap_or(termsize::Size { rows: 0, cols: 0 })
+}
+
+// Hand-rolled ANSI only: 0-based home sequences (ESC[0;0H) and
+// attribute resets are misprocessed by ConPTY-based terminals (Windows
+// Terminal), which shifts each line by one char. Manual moves
 // are always 1-based ESC[<row>;<col>H and every cell is flushed atomically.
 pub fn screen_clear() {
     print!("\x1b[2J\x1b[1;1H");
@@ -130,7 +137,7 @@ pub fn point_pos(chars: &[char], point: usize) -> Vec<usize> {
 }
 
 pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> Tree {
-    let size = get_size();
+    let size = term_size();
     let tty = size.rows > 0 && size.cols > 0;
     let mut rows = size.rows as usize;
     let mut cols = size.cols as usize;

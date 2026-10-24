@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-curses = "0.1.0"
+termsize = "0.1.9"
 termios = "0.3.3"
 libc = "0.2"

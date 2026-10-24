@@ -444,7 +444,7 @@
   b,a 順になり Left クランプ先が b 化)。ローカルは a 作成順 fs のため 84/84。
   → fix #16 で s133 を順序非依存化。
   (fix #15 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #16(このコミット)**: R-6 続・CI 検証で露呈した s133 の
+- 2026-10-25: **fix #16(コミット 3a85ace)**: R-6 続・CI 検証で露呈した s133 の
   read_dir 順序依存を除去。Tab 候補リストの assert を 2 順容忍の正規表現にし、
   開くファイルは「最左候補=Left クランプ先」として `[ab]` 幅で検証
   (expect_lastline は厳密一致なので grep 化)。ローカル probe(作成順スワップ)で
@@ -452,3 +452,15 @@
   b 側の open 経路は CI ランナーの s133 失敗再現=断言の順序非依存性で担保)。
   CI 再検証は本 push の実行で確認。
   (fix #16 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #17(このコミット)**: R-5(curses 依存を termsize 直依存に置換)。
+  curses 0.1.0 の canvas::get_size は `termsize::get().unwrap_or(Size{0,0})` の薄
+  ラッパー(レジストリ ソースで確認・ゲートでも再検証)。Cargo.toml を termsize 0.1.9
+  (lock 済み版と同版)に置換し、`screen::term_size()` に集約(呼び出し 3 箇所=draw_all/
+  read_line_c/search プロンプト、rows==0=非 tty フォールバック意味論は byte 同一)。
+  curses は Cargo.lock から消滅(emur deps=libc/termios/termsize、lock 更新をコミット
+  により CI の --locked 節と整合)。README 依存記述=termsize 0.1.9 へ更新。
+  `[profile.release]` は低優先注記どおり未設定のまま(TODO 記録)。clippy `--all-targets`
+  0・unit 30/30・`RUSTFLAGS=-D warnings --locked` 構築可・フル e2e 84/84(run22)・
+  release 6/6(rs10)。パイプ時 s140/s142 の 24x80 フォールバックは termsize::get()の
+  None 経路で同一(非 tty ゲート確認)。ゲート APPROVE(両コミット)。
+  (fix #17 のコミットハッシュは次エントリに記載)

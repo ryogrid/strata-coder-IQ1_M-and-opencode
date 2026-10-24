@@ -22,7 +22,7 @@ machine, hardware, local model serving, coding-agent versions) lives in
 Toolchain:
 
 - Rust: `rustc 1.99.1`, `cargo 1.99.1`, language edition 2021.
-  Direct dependencies: `curses` 0.1.0 (terminal SIZE query only —
+  Direct dependencies: `termsize` 0.1.9 (terminal SIZE query only —
   rendering is hand-written ANSI escapes), `termios` 0.3.3 (POSIX tty).
 
 Runtime requirements:
@@ -32,8 +32,8 @@ Runtime requirements:
   supported (the Windows 11 host develops and runs the editor via WSL2).
 - Terminal: any ANSI-capable terminal (tmux, xterm, a real tty).
   The editor auto-detects its size when stdout is a tty
-  (`curses::canvas::get_size`; the direct dependency is `curses` —
-  `termsize` is only a transitive one);
+  (`termsize::get`; the direct dependency is `termsize` — the former
+  `curses` wrapper was removed as redundant, R-5);
   when stdout is redirected it falls back to 24 rows x 80 columns.
   Input is UTF-8; buffer positions are character indexes. The tty is put
   into raw mode on startup (with `IXON | IXOFF` cleared so Ctrl-S reaches

@@ -3,21 +3,12 @@
 version = 4
 
 [[package]]
-name = "curses"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81cfa01863896a4116905617b91b235290fc28be3a99d4777db147315c562acf"
-dependencies = [
- "termsize",
-]
-
-[[package]]
 name = "emur"
 version = "0.1.0"
 dependencies = [
- "curses",
  "libc",
  "termios",
+ "termsize",
 ]
 
 [[package]]

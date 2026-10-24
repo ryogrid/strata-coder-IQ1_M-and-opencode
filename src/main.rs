@@ -318,7 +318,7 @@ fn main() {
             let orig = bufs[bi].point;
             let mut qs: Vec<char> = vec![];
             let mut last = orig; // start position of the current match
-            let szs = curses::canvas::get_size();
+            let szs = screen::term_size();
             let prow = if szs.rows > 0 { szs.rows } else { 24 };
             print!("\x1b[{};1H\x1b[2K", prow);
             print!("Search: ");

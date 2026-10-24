@@ -374,7 +374,7 @@ fn caret_col(plen_c: usize, out: &[char], cur: usize) -> usize {
 // reads intentionally stay read_byte(): an EOF byte (0) never matches
 // '[', and the loop-top read_byte_eof returns None, so no hang is possible.
 pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Option<String> {
-    let sz = curses::canvas::get_size();
+    let sz = crate::screen::term_size();
     let row: usize = if sz.rows > 0 { sz.rows as usize } else { 24 };
     let plen_c = cells_of(&chars_of(prompt.clone())); // prompt width in CELLS
     print!("\x1b[{};1H\x1b[2K", row);
