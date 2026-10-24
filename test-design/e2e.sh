@@ -1138,7 +1138,21 @@ t_s153() {  # C-x k on an aliased buffer resets ALL leaves' leaf state (M-15)
   report s153 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153; do
+t_s154() {  # C-k with the mark BEHIND the point kills to end of line (B-3)
+  printf 'B3 alpha beta\nsecond\n' > /tmp/emur-e2e-b3.txt
+  start_session s154 /tmp/emur-e2e-b3.txt
+  local ok=1
+  # Loaded buffer carries mark=0: three C-f put point at 3, mark BEHIND on
+  # the line. The OLD build clamped the kill span to the point and deleted
+  # NOTHING (silent no-op); the new build kills 'alpha beta'.
+  sendb $'\006\006\006'
+  sendb $'\013'
+  expect '^B3$' || ok=0
+  expect_lastline 'Buf /tmp/emur-e2e-b3.txt * 1/3 (27%)' || ok=0
+  report s154 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154; do
   "$t"
 done
 

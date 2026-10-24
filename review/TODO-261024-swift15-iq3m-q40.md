@@ -26,7 +26,7 @@
 
 - [x] **B-1**: gap buffer が gap を前確保せず挿入 O(n)。new() で gap 預け插入 O(1) 償却。01 §B-1 / Design Doc B → 末尾にサイズ GAP=8192 前確保+枯渇時 splice で in-place 再充填(fix #2)。潜行バグ insert_newline_after の gap_start += 1 欠落(F-4)も同時修正・テスト固定
 - [x] **B-2**: find_forward/backward が毎回全文 text() 生成。char_at 直接スキャンへ。01 §B-2 / Design Doc B → Option<usize> 戻り値で直接スキャン(fix #2)
-- [ ] **B-3**: kill_to_end_of_line が mark 後方(同一行)で無音 no-op。後方 mark は領域なし扱いへ。01 §B-3
+- [x] **B-3**: kill_to_end_of_line が mark 後方(同一行)で無音 no-op。後方 mark は領域なし扱いへ。01 §B-3 → 前方 mark のみ kill 境界(`hi=mark`/後方・off-line・mark==point は行末まで)。unit kill_backward_mark_kills_to_eol(後方 mark で行末/改行位置で行結合/前方 mark は領域辺で停止)、e2e s154(旧 worktree で無音 no-op 確認・新 PASS、fix #12)。README Region 条項に「kill の停止は前方 mark のみ」を追記
 - [x] **M-4**: メインループ EOF が未保存バッファを無警告破棄。方針決定(EOF=終了据え置き+dirty 時のメッセージ/文書化)。02 §M-4 / Design Doc A → 方針確定・README/keybindings に明記(fix #1)。確認プロンプトは付けない(stdin 閉鎖後は確認不能が本質)
 - [x] **M-5**: C-x k が modified バッファを無確認で空にする。確認プロンプト追加。02 §M-5 → `Kill buffer <name>? (yes|no)`(yes/y のみ実行、EOF=キャンセル=MAIN EOF 終了は M-4 仕様)。e2e s144(fix #4)
 - [x] **M-6**: C-x C-f が同一ファイルを毎回新規バッファ化。既存バッファ再利用。02 §M-6 → `find_buffer`(名前=路径一致、C-x b と同一基準)で既存なら disk 再読込せず窓に表示(編集・modified 保持)。単窓は分割して新窓に、表示済みなら no-op。e2e s148(fix #7)。C-x C-w バインドは名前は変えないため対象外(README に明記)
@@ -372,3 +372,10 @@
   移設しポインタ化+モデル ID 単一源=opencode.json(D-10)。design/keybindings.md=
   M-</M->(D-5)。ドキュメントのみ(コード不変)、cargo build/clippy 警告ゼロ確認。
   (fix #11 のコミットハッシュは次エントリに記載)
+- 2026-10-24: **fix #12(このコミット)**: B-3(kill_to_end_of_line の後方 mark で無音 no-op)。
+  kill 境界を「現行内の前方 mark」のみに限定(後方 mark・off-line・mark==point は
+  行末まで、改行位置では行結合)。unit 1 追加(3 ケース:後方 mark で行末 kill/改行
+  位置で行結合/前方 mark は領域辺で停止)、e2e s154(mark=0 の状態で C-f×3→C-k、
+  新=行内容 kill+modified、旧=無音 no-op/無 modified;HEAD worktree で 2/2 FAIL・
+  新 2/2 PASS)。README Region 条項更新。clippy 0・test 23/23。フル e2e/release は次段。
+  (fix #12 のコミットハッシュは次エントリに記載)

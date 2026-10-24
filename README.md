@@ -83,7 +83,9 @@ Run the editor from a real terminal:
   other command ends the run; `C-y` pastes the killed text back at point.
 - **Regions** — `C-@` (`C-space`, NUL) sets the mark at point; when the
   mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the
-  region edge.
+  region edge. For `C-k` the edge is a mark AHEAD of point; a mark
+  BEHIND point is not a kill boundary — `C-k` kills to end of line (and
+  merges lines when point sits on the newline).
 - **Incremental forward search** — `C-s` reads the query one char at a
   time: each typed char extends the query, moves point to the match end,
   and the search wraps at the buffer end; a char that matches nowhere

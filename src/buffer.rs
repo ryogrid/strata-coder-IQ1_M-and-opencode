@@ -255,9 +255,12 @@ impl Buffer {
     pub fn kill_to_end_of_line(self: &mut Buffer) -> String {
         let ls = self.line_start(self.point);
         let le = self.line_end(self.point);
-        let hi = if self.mark != self.point && self.mark >= ls && self.mark <= le {
-            if self.mark > self.point { self.mark } else { self.point }
+        let hi = if self.mark > self.point && self.mark >= ls && self.mark <= le {
+            self.mark // region edge AHEAD on this line: C-k stops there
         } else {
+            // B-3: a mark BEHIND the point (or off-line, or ==point) is not
+            // a kill boundary: kill to end of line. (Old code clamped hi to
+            // point for a backward mark, making C-k a silent no-op.)
             self.len()
         };
         if self.point < self.len() && self.char_at(self.point) == '\n' && self.point < hi {
@@ -514,5 +517,26 @@ fn editing_and_navigation() {
     assert!(b.text() == "hello\n bi g");
     b.beginning_of_buffer();
     assert!(b.point == 0);
+}
+#[test]
+fn kill_backward_mark_kills_to_eol() {
+    // B-3: a mark BEHIND the point must not turn C-k into a no-op.
+    let mut b = Buffer::new("t".to_string(), "hello world\nx\n".to_string());
+    b.point = 6; // 'w' of world; mark BEHIND on the line
+    b.mark = 0;
+    let cut = b.kill_to_end_of_line();
+    assert!(cut == "world");
+    assert!(b.text() == "hello \nx\n");
+    // point on the newline with the backward mark: the newline is killed
+    b.point = 6;
+    let cut2 = b.kill_to_end_of_line();
+    assert!(cut2 == "\n");
+    assert!(b.text() == "hello x\n");
+    // a forward mark still stops the kill at the region edge
+    let mut c = Buffer::new("t".to_string(), "abcdef\n".to_string());
+    c.point = 1;
+    c.mark = 3;
+    assert!(c.kill_to_end_of_line() == "bc");
+    assert!(c.text() == "adef\n");
 }
 }
