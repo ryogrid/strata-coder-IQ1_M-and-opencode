@@ -1,2 +1,5 @@
 target/
 *.swp
+demo.txt
+run.out
+smoke.txt

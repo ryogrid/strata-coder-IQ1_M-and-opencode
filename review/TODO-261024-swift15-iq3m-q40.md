@@ -40,9 +40,9 @@
 - [x] **H-2**: Rust のライフタイム `'a` を文字列として誤色。lang1 の `'` 処理改善。05 §H-2 / Design Doc B → 3条件(同一行閉じ/j>=i+2/内容が string 的)採用。フィクスチャ `fn f<'de>(x: &'de str) {}` をテストで固定(fix #2)
 - [x] **H-3**: detect が拡張子の大文字小文字を区別しない(FILE.RS 無装飾)。05 §H-3 / Design Doc B → ASCII 小文字化比較+fizz マトリクステスト(fix #2)
 - [ ] **R-1**: clippy 94 件。`cargo clippy --fix` + 手当てで掃除。完了ゲート: `cargo clippy` 警告0行(AGENT.md に clippy ルール追記)。06 §R-1
-- [ ] **R-2**: e2e が debug のみ。release での代表スモーク追加。06 §R-2
+- [x] **R-2**: e2e が debug のみ。release での代表スモーク追加。06 §R-2 → `test-design/release_smoke.sh`(s02/s103/s110/s112/s140/s141 を release バイナリで実行、ビルド自動、6/6 PASS)。溢れ系 s141 を含む(fix #5)
 - [ ] **R-3**: window/screen の単体テスト追加(buffer=find 系は B-9、highlight は H-8 が担当)。06 §R-3
-- [ ] **R-4**: run.out/smoke.txt/demo.txt 未整理。.gitignore 追記。06 §R-4
+- [x] **R-4**: run.out/smoke.txt/demo.txt 未整理。.gitignore 追記。06 §R-4 → 3 ファイルを .gitignore に追加(fix #5)
 - [x] **D-1**: README:148・keybindings.md:13「EOF 無条件終了」の記述を実装に合わせ修正(Phase 1 の EOF 実装修正と同時に実施、完了記録は当該コミット)。07 §D-1 / Design Doc A → README 本文+キー表+keybindings.md 更新済み(fix #1)
 - [ ] **D-2**: design/README.md の "Not implemented" 列表陳腐化(syntax highlighting 等)。07 §D-2
 - [ ] **D-3**: architecture.md の4点(gap O(1)/keymap tree/curses 描画/status top)を実態に。07 §D-3
@@ -173,6 +173,11 @@
 - **read_file の失敗秘匿はデータ喪失経路を伴う**: 失敗時に filename を付けて空で開くと
   C-x C-s が**元ファイルを上書き**しうる。argv 起動の読み込み失敗時は
   filename なしの空バッファ+Failed to open 表示(fix #4)。
+- **release スモークの組み立て(R-2)**: e2e.sh のヘルパは行範囲 sed で抽出する
+  慣習(1-53=本体ヘルパ、543-545=色付きキャプチャ系)。追加ヘルパ
+  (expect_lastline)は生成側で定義し、BIN は変数再代入で release を向くようにする。
+  debug と release で挙動が分かれるのは整数溢れ系(u32 溢れ=debug panic/release wrap)
+  なので、s141(go-to-line 15 桁)を代表シナリオに含める。
 - **dispatch 連鎖の終端 else は前置 if を巻き込む**: C-x ハンドラは
   `if n == 0x03 {...}`(独立 if)→ `if n == 0x31 {...} else if ...` の鎖、という
   構造だった。M-7 で鎖の終端に `else { Undefined }` を足すと、**独立 if の
@@ -222,8 +227,11 @@
   docs 追記コミット(f0fd5aa)で反映。
 - 2026-10-24: **fix #3(コミット ec5887e)**: M-3(C-s 中の矢印キーで `[B` ゴミ self-insert)。
   ESC 受理時に矢印シーケンスを消費+移動。e2e s143 追加。Phase 1 の High 全項目完了。
-- 2026-10-24: **fix #4(このコミット)**: M-5/M-7/M-8/M-9(main.rs UX 群)+D-9README 注記。
+- 2026-10-24: **fix #4(コミット 8f98342)**: M-5/M-7/M-8/M-9(main.rs UX 群)+D-9README 注記。
   read_file→Result 化・C-x k 確認・Undefined command・C-x C-w 成功時のみ filename・
   Failed to open 表示。e2e s144〜s147 追加。コミットメッセージの TODO 原文「Quit 相当」は
-  メッセージ表示に方針変更(理由を TODO に記録)。
-  (fix #4 のコミットハッシュは次エントリに記載)
+  メッセージ表示に方針変更(理由を TODO に記録)。ゲート REJECT の B-1(C-x C-c キャンセル
+  が Undefined で上書き)は鎖先頭 else if 連結で解消、76/76 PASS。
+- 2026-10-24: **fix #5(このコミット)**: R-2(release スモーク `test-design/release_smoke.sh`
+  6 シナリオ PASS)+R-4(.gitignore 3 項目)。
+  (fix #5 のコミットハッシュは次エントリに記載)
