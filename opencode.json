@@ -15,7 +15,30 @@
             "context": 131072,
             "output": 8192
           }
+        },
+        "qwen3.8-flash-next-swift": {
+          "name": "Qwen3.8-Flash-Next Swift IQ3_S 64k (Strata)",
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          }
         }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "serena": {
+        "type": "local",
+        "command": [
+          "/home/ryo/.local/bin/serena",
+          "start-mcp-server",
+          "--project",
+          "/home/ryo/work/opencode-strata-try",
+          "--context",
+          "agent"
+        ],
+        "cwd": "."
       }
     }
   }

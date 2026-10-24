@@ -1,5 +1,25 @@
 # AGENT.md
 
+## Serena MCP server
+
+- Use the Serena MCP server (configured as `serena` in `opencode.json`:
+  `serena start-mcp-server --project <this repository root> --context
+  agent`) to reference, navigate and modify the Rust code: symbol search,
+  symbol bodies, cross-references and code search go through Serena's MCP
+  tools when they are available; plain file read/edit tools are the
+  fallback.
+- At the start of every session, before working on the user's first
+  request, run the instructions command via the shell:
+
+  ```sh
+  serena print-system-prompt /home/ryo/work/opencode-strata-try --only-instructions --context agent
+  ```
+
+  and follow the instructions it returns.
+- The project configuration is `.serena/project.yml` (language server:
+  rust); keep it committed and let Serena index the project (the LSP
+  language server is downloaded automatically on first use).
+
 ## Build rules
 
 - Fix every issue pointed out by compiler warnings.
