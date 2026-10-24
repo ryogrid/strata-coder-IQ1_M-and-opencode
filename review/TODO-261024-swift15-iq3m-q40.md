@@ -61,7 +61,7 @@
 - [ ] **M-11**: 300行ディスパッチをテーブル化(architecture の keymap tree 記述と共に対応)。02 §M-11
 - [ ] **M-12**: prev_cmd は last-command 相当に限定(現状文書と整合、注記のみ)。02 §M-12
 - [ ] **M-13**: leaf/bufs 間の point 書写しをヘルパー集約。02 §M-13
-- [ ] **M-15**: alias キル後の stale leaf-point で panic(fix #7 ゲート発見・既存バグ)。`C-x 2`→`C-e`→`C-x o`→`C-x k`→`C-x o`→`x` で buffer.rs move_gap 添字外(pure legacy キーで再現、M-6 以前から存在)。`C-x k`時に buffer を指す全 leaf の point/mark/scroll を 0 化、かつ/または main ループ先頭 sync で `point.min(buf.len())` クランプ。M-13 と併せて対応可
+- [x] **M-15**: alias キル後の stale leaf-point で panic(fix #7 ゲート発見・既存バグ)。`C-x 2`→`C-e`→`C-x o`→`C-x k`→`C-x o`→`x` で buffer.rs move_gap 添字外(pure legacy キーで再現、M-6 以前から存在)。`C-x k`時に buffer を指す全 leaf の point/mark/scroll を 0 化、かつ/または main ループ先頭 sync で `point.min(buf.len())` クランプ。M-13 と併せて対応可 → 両方実施(C-x k=全 alias leaf を 0 化/ループ先頭=point・mark を len にクランプ)。e2e s153(旧 worktree で panic 確認・新 PASS、fix #9)
 - [ ] **M-14**: .to_string()/clone 乱用を API 変更で削減。02 §M-14
 - [ ] **S-5**: Frame.kind を enum 化(境界 Frame の leaf ダミー除去)。03 §S-5
 - [ ] **S-6**: scroll 再計算の不変条件をコメント化。03 §S-6
@@ -326,7 +326,7 @@
   e2e s148(編集保持+重複なし)。README/keybindings 記述追加。
 - 2026-10-24: Design Doc C 確定(コミット ea3e2b7)。fix #8 ゲートで s151 の算術(候補=フルパス/
   lw=46 セル/C-b×44)・caret_cells の prompt 相対・echo_tail 別名演算・絵文字未カバーの正直化を反映。
-- 2026-10-24: **fix #8(このコミット)**: S-2/T-7(全角表示幅のセル基準化、Design Doc C)。
+- 2026-10-24: **fix #8(コミット 3dce691)**: S-2/T-7(全角表示幅のセル基準化、Design Doc C)。
   `screen.rs`: `char_width`(幅 2 の 14 範囲+幅 0 の結合 0x0300-036F+既定 1、単一の幅源)、
   `draw_cell` の打切り/パディングと `point_pos`(=カーソル列)をセル化(全角は枠内で
   割り込み描きせず)。`terminal.rs`: `cells_of` 追加、`list_width`/`cand_at` をセル合計、
@@ -343,3 +343,12 @@
   ゲート(APPROVE-WITH-CHANGES)Major-1/2・Minor-1/2 すべて適用(コード=列直接渡し、
   Doc=分離力の降格と s152 追加、README=表外結合記号の条項)。性能 0.073-0.088s(451KB debug)。
   (fix #8 のコミットハッシュは次エントリに記載)
+- 2026-10-24: **fix #9(このコミット)**: M-15(alias キル後の stale leaf-point で panic)。
+  二層対策: (1) `C-x k` はkill 対象 buffer を指す**全 leaf** の point/mark/scroll を 0 化
+  (C-x 2/3・M-6 再利用で作れる alias を網羅)、(2) main ループ先頭の leaf→buffer 書写しで
+  point/mark を `buf.len()` にクランプ(in-place 置換の他の経路にも効く安全層)。
+  e2e s153: C-x 2→C-e→C-x o→C-x k→C-x o→x。新ビルド 2/2 PASS、HEAD worktree
+  ビルドで同一手順 2/2 FAIL(panic、分離成立)。アサートはステータス形式
+  `<msg> <line>/<total> (<pct>%)` の完全一致(`Killed buffer <path> 1/1 (0%)`)。
+  全ゲート(clippy 0/test 22/22/フル e2e 82)は次段記載。
+  (fix #9 のコミットハッシュは次エントリに記載)

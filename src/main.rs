@@ -104,8 +104,16 @@ fn main() {
     loop {
         tree = screen::draw_all(&bufs, tree, active, msg.to_string());
         let bi = tree.leaves[active].buffer;
-        bufs[bi].point = tree.leaves[active].point;
-        bufs[bi].mark = tree.leaves[active].mark;
+        // M-15: a leaf's point/mark go STALE when its buffer is replaced in
+        // place (C-x k while several leaves alias one buffer). Clamp before
+        // copying into the buffer: insert/kill at point > len panics in
+        // move_gap (index out of bounds).
+        let lp = if tree.leaves[active].point > bufs[bi].len() { bufs[bi].len() } else { tree.leaves[active].point };
+        let lm = if tree.leaves[active].mark > bufs[bi].len() { bufs[bi].len() } else { tree.leaves[active].mark };
+        tree.leaves[active].point = lp;
+        tree.leaves[active].mark = lm;
+        bufs[bi].point = lp;
+        bufs[bi].mark = lm;
         let rb = terminal::read_byte_eof();
         if rb[1] == 1 {
             break; // EOF (no byte read at all)
@@ -244,6 +252,19 @@ fn main() {
                     bufs[bi] = buffer::Buffer::new(name.to_string(), "".to_string());
                     bufs[bi].filename = None;
                     bufs[bi].modified = false;
+                    // M-15: leaves ALIASING this buffer (C-x 2/C-x 3/C-x C-f
+                    // reuse keep point/mark/scroll per leaf) keep positions
+                    // from the killed content: reset EVERY leaf showing bi,
+                    // not just the active one.
+                    let mut lk = 0;
+                    while lk < tree.leaves.len() {
+                        if tree.leaves[lk].buffer == bi {
+                            tree.leaves[lk].point = 0;
+                            tree.leaves[lk].mark = 0;
+                            tree.leaves[lk].scroll = 0;
+                        }
+                        lk += 1;
+                    }
                     msg = format!("Killed buffer {}", name);
                 }
             } else if n == 0x62 || n == 0x02 { // Ctrl-x b / Ctrl-x Ctrl-b: switch-to-buffer & buffer list select
