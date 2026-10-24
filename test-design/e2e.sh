@@ -1019,7 +1019,32 @@ t_s147() {  # read failures report "Failed to open ..." (M-9); window survives.
   report s147 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147; do
+t_s148() {  # C-x C-f reuses an existing buffer for the same file (M-6)
+  printf 'M6 base\n' > /tmp/emur-e2e-m6.txt
+  start_session s148
+  sendb $'\030\006' '/tmp/emur-e2e-m6.txt'
+  enter
+  local ok=1
+  expect 'M6 base' || ok=0
+  # edit the file buffer (append a line), then reopen the same file from the
+  # other window: the buffer with edits is shown - a fresh load lacks 'M6 added'
+  sendb $'\005'
+  sendb $'\012' 'M6 added'
+  sendb $'\030\157'
+  expect_lastline 'Buf *demo* 1/3 (0%)' || ok=0
+  sendb $'\030\006' '/tmp/emur-e2e-m6.txt'
+  enter
+  expect_lastline 'Buf /tmp/emur-e2e-m6.txt * 1/3 (0%)' || ok=0
+  expect 'M6 added' || ok=0
+  # buffer list: the path appears exactly once (no duplicate buffer)
+  sendb $'\030\002'
+  expect 'Buffers: \*demo\* /tmp/emur-e2e-m6.txt' || ok=0
+  expect_absent 'm6.txt /tmp/emur' || ok=0
+  sendb $'\007'
+  report s148 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148; do
   "$t"
 done
 

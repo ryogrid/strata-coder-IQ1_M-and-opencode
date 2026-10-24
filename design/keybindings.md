@@ -48,7 +48,7 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 
 | Key | Command |
 |-----|---------|
-| `C-x C-f` | `open-file` (open a file in the active window — when only one window exists it first splits and shows the file below; Tab completes file paths) |
+| `C-x C-f` | `open-file` (open a file in the active window — when only one window exists it first splits and shows the file below; a buffer for an already-open file is reused (edits kept, no re-read); Tab completes file paths) |
 | `C-x b` | `switch-to-buffer` (name in echo/minibuffer line; Tab completes buffer names; creates empty buffer if new) |
 | `C-x C-b` | `buffer-list-select` (lists buffer names in the minibuffer; Tab completes them; type a name, or Enter cycles to the next buffer) |
 | `C-x C-s` | `save` (write current buffer) |

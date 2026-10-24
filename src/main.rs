@@ -28,6 +28,27 @@ fn find_buffer(bufs: &[buffer::Buffer], name: String) -> Vec<usize> {
     vec![]
 }
 
+// Show buffer nb in the active window: a lone window splits below and the
+// buffer shows in the NEW window (the old one keeps its buffer); in a split
+// tree the active window's buffer is replaced. point/mark/scroll reset to 0.
+// Shared by the fresh-load and the reuse path of C-x C-f (M-6).
+fn show_buffer(tree: &mut window::Tree, active: &mut usize, nb: usize) {
+    if tree.leaves.len() == 1 {
+        tree.split(*active, true);
+        let copy_idx = tree.leaves.len() - 1;
+        tree.leaves[copy_idx].buffer = nb;
+        tree.leaves[copy_idx].point = 0;
+        tree.leaves[copy_idx].mark = 0;
+        tree.leaves[copy_idx].scroll = 0;
+        *active = copy_idx;
+    } else {
+        tree.leaves[*active].buffer = nb;
+        tree.leaves[*active].point = 0;
+        tree.leaves[*active].mark = 0;
+        tree.leaves[*active].scroll = 0;
+    }
+}
+
 // Quit confirmation (Emacs: "Modified buffers exist; exit anyway? (yes|no)"):
 // exiting via Ctrl-c / Ctrl-x Ctrl-c asks in the minibuffer when any buffer
 // has unsaved modifications. Only "yes" (or "y") exits; anything else cancels.
@@ -134,33 +155,36 @@ fn main() {
             } else if n == 0x06 { // Ctrl-x Ctrl-f: open file; in a lone window split below, in a split tree load into the active window
                 let path = terminal::read_line_files("Find file: ".to_string());
                 if !path.is_empty() {
-                    match read_file(path.to_string()) {
-                        Err(e) => {
-                            // M-9: an unreadable file does NOT become an empty
-                            // loaded buffer; report it, keep the current window.
-                            msg = format!("Failed to open {}: {}", path, e);
-                        }
-                        Ok(text) => {
-                            let nb = bufs.len();
-                            bufs.push(buffer::Buffer::new(path.to_string(), text));
-                            bufs[nb].filename = Some(path.clone());
-                            bufs[nb].modified = false;
-                            if tree.leaves.len() == 1 {
-                                tree.split(active, true);
-                                let copy_idx = tree.leaves.len() - 1;
-                                tree.leaves[copy_idx].buffer = nb;
-                                tree.leaves[copy_idx].point = 0;
-                                tree.leaves[copy_idx].mark = 0;
-                                tree.leaves[copy_idx].scroll = 0;
-                                active = copy_idx;
-                            } else {
-                                tree.leaves[active].buffer = nb;
-                                tree.leaves[active].point = 0;
-                                tree.leaves[active].mark = 0;
-                                tree.leaves[active].scroll = 0;
-                            }
+                    // M-6: an already-open file REUSES its buffer (Emacs
+                    // find-file). Matching is by buffer name (= path at load,
+                    // the same basis as find_buffer/C-x b); a C-x C-w-bound
+                    // buffer keeps its own name and is not matched. No disk
+                    // re-read: buffer edits and the modified flag survive.
+                    let existing = find_buffer(&bufs, path.clone());
+                    if let Some(&nb) = existing.first() {
+                        if tree.leaves[active].buffer == nb {
+                            msg = "".to_string(); // already showing it: no-op
+                        } else {
+                            show_buffer(&mut tree, &mut active, nb);
                             moved = true;
                             msg = "".to_string();
+                        }
+                    } else {
+                        match read_file(path.to_string()) {
+                            Err(e) => {
+                                // M-9: an unreadable file does NOT become an empty
+                                // loaded buffer; report it, keep the current window.
+                                msg = format!("Failed to open {}: {}", path, e);
+                            }
+                            Ok(text) => {
+                                let nb = bufs.len();
+                                bufs.push(buffer::Buffer::new(path.to_string(), text));
+                                bufs[nb].filename = Some(path.clone());
+                                bufs[nb].modified = false;
+                                show_buffer(&mut tree, &mut active, nb);
+                                moved = true;
+                                msg = "".to_string();
+                            }
                         }
                     }
                 }

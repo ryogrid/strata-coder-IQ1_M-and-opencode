@@ -29,7 +29,7 @@
 - [ ] **B-3**: kill_to_end_of_line が mark 後方(同一行)で無音 no-op。後方 mark は領域なし扱いへ。01 §B-3
 - [x] **M-4**: メインループ EOF が未保存バッファを無警告破棄。方針決定(EOF=終了据え置き+dirty 時のメッセージ/文書化)。02 §M-4 / Design Doc A → 方針確定・README/keybindings に明記(fix #1)。確認プロンプトは付けない(stdin 閉鎖後は確認不能が本質)
 - [x] **M-5**: C-x k が modified バッファを無確認で空にする。確認プロンプト追加。02 §M-5 → `Kill buffer <name>? (yes|no)`(yes/y のみ実行、EOF=キャンセル=MAIN EOF 終了は M-4 仕様)。e2e s144(fix #4)
-- [ ] **M-6**: C-x C-f が同一ファイルを毎回新規バッファ化。既存バッファ再利用。02 §M-6
+- [x] **M-6**: C-x C-f が同一ファイルを毎回新規バッファ化。既存バッファ再利用。02 §M-6 → `find_buffer`(名前=路径一致、C-x b と同一基準)で既存なら disk 再読込せず窓に表示(編集・modified 保持)。単窓は分割して新窓に、表示済みなら no-op。e2e s148(fix #7)。C-x C-w バインドは名前は変えないため対象外(README に明記)
 - [x] **M-7**: 未バインドの C-x 後続が無言。default でメッセージ追加。02 §M-7 → `Undefined command: C-x <char>`。e2e s145(fix #4)。※TODO 原文の「Quit 相当」は採用せず(終了は事故リスク、 Emacs の "Undefined" 相当のメッセージ採用)
 - [x] **M-8**: C-x C-w が書き出し失敗後も filename を設定。成功時のみ設定。02 §M-8 → 成功時のみバインド(失敗時 C-x C-s は "No file name" 経路)。e2e s146(fix #4)
 - [x] **M-9**: read_file が全エラーを無言(空表示)。開けない時のステータスメッセージ。02 §M-9 → `Result<String,String>` 化で argv/C-x C-f/C-x C-i が `Failed to open <path>: <errno>` を表示。argv 失敗時 filename 未バインド(C-x C-s が元ファイルを上書きしない)。e2e s147(fix #4)
@@ -61,13 +61,14 @@
 - [ ] **M-11**: 300行ディスパッチをテーブル化(architecture の keymap tree 記述と共に対応)。02 §M-11
 - [ ] **M-12**: prev_cmd は last-command 相当に限定(現状文書と整合、注記のみ)。02 §M-12
 - [ ] **M-13**: leaf/bufs 間の point 書写しをヘルパー集約。02 §M-13
+- [ ] **M-15**: alias キル後の stale leaf-point で panic(fix #7 ゲート発見・既存バグ)。`C-x 2`→`C-e`→`C-x o`→`C-x k`→`C-x o`→`x` で buffer.rs move_gap 添字外(pure legacy キーで再現、M-6 以前から存在)。`C-x k`時に buffer を指す全 leaf の point/mark/scroll を 0 化、かつ/または main ループ先頭 sync で `point.min(buf.len())` クランプ。M-13 と併せて対応可
 - [ ] **M-14**: .to_string()/clone 乱用を API 変更で削減。02 §M-14
 - [ ] **S-5**: Frame.kind を enum 化(境界 Frame の leaf ダミー除去)。03 §S-5
 - [ ] **S-6**: scroll 再計算の不変条件をコメント化。03 §S-6
 - [ ] **S-7**: 分割時カーソルと status clamp の関係コメント。03 §S-7
 - [ ] **S-8**: find_slot センチネルを Option<usize> へ。03 §S-8
 - [ ] **S-9**: Node.vertical の命名/コメント改善。03 §S-9
-- [ ] **S-10**: point_pos の同一フレーム2回呼びを1回化。03 §S-10
+- [x] **S-10**: point_pos の同一フレーム2回呼びを1回化。03 §S-10 → fix #2 で leaf 単位 1 回化(leaf_pos ベクタでスクロール前計算とカーソル配置で共有)
 - [ ] **S-12**: レイアウト重なりデジェネレートのコメント。03 §S-12
 - [ ] **T-5**: fd0 固定の設計注記(stdin 非 tty で raw mode なし)。04 §T-5
 - [ ] **T-6**: Tab 補完 0 候補時に bell。04 §T-6
@@ -81,7 +82,7 @@
 - [ ] **H-7**: スタイルコードを enum 化。05 §H-7
 - [x] **H-8**: detect/styles の単体テスト追加。05 §H-8 → fix #2 で追加(detect 拡張子マトリクス、lifetime フィクスチャ、string/char リテラル、json、md)
 - [ ] **R-5**: curses 依存縮小(size 検出のみ)/[profile] 注記。06 §R-5
-- [ ] **R-6**: CI 追加(build+test+clippy+e2e)。06 §R-6
+- [ ] **R-6**: CI 追加(build+test+clippy+e2e)。06 §R-6 → 導入時 `cargo clippy --all-targets` の既存 test コード 17 lint(fix #7 ゲート検出。AGENT.md の現行ゲートは plain `cargo clippy`=0 で合格)も掃除してゲートに含めるとよい
 - [ ] **D-6**: keybindings.md の C-d 二重掲載・C-\ 凡例削除。07 §D-6
 - [ ] **D-8**: C-s/C-r/C-l minibuffer は補完なしの明記。07 §D-8
 - [x] **D-9**: README:79 に「全読み込みエラーで空で開く」注記(M-9 と同時)。07 §D-9 → M-9 と同時に新挙動(Failed to open 表示・filename 未バインド)を README へ記述(fix #4)
@@ -203,6 +204,23 @@
   `(0x20..0x7f).contains(&b) || b >= 0x80` にマージ(分岐重複 lint 対策)。
 - **clippy ゼロは AGENT.md のビルド則に明文化済み**: 今後 `cargo clippy` の
   `warning:` 0 行が全コミットのゲート。`#[allow(...)]` による黙殺は禁止(警告則と同じ)。
+- **grep によるゲート判定はパイプ末尾に注意**: `cargo build 2>&1 | grep -cE '^warning:'` は
+  ビルド失敗時も警告 0 行で exit 0 になり「合格」と誤読する(実際は E0308 で fail していた)。
+  **ビルド成否は `cargo build 2>&1 | tail -1`(Finished/error 行)を併記して判定する**。
+- **フル e2e とゲート/プローブの並行は禁止(run11 の偽 FAIL)**: tmux セッション名は
+  シナリオ番号由来(`emu-e2e-sNN`)でゲート内の同名プローブは suites 側の稼働中セッションを
+  `start_session` が kill して相互に偽 FAIL を起こしうる(s124)。CPU 競合は STEP=0.4s の
+  タイミングアサートを flake させる(s83)。**e2e と tmux/cargo を含むレビューは直列に**し、
+  suite FAIL 時はまず単体 3 回の実行で再現性を確認して製品バグを切り分ける。
+- **C-x C-f 再利用の一致基準(M-6)**: 名前一致(`find_buffer`=C-x b と同一)。Emacs の
+  「ファイル実体一致」は採用しなかった:C-x C-w で *demo* に filename をバインドした場合の
+  み差が出る(実体一致なら *demo* を再表示)。名前一致は「C-x b で見える状態」と 1:1 で
+  理解しやすく、バッファ名の重複(=M-6 の症状)を確実に防げる。C-x C-w バインド系は
+  対象外になることを README に明記。表示ロジックは `show_buffer` に集約し、
+  「現在表示中なら no-op(point リセットしない)」を分岐化。
+- **`expect_lastline` は完全一致なのでエスケープしない**: grep 系の `expect` と混同して
+  `\*` と書くとバックスラッシュ込みの文字列比較になり必ず FAIL する(modified フラグ
+  `*` はそのまま書く)。
 - **e2e s21 の Flake 根本原因(既存)**: 単発キャプチャが**描画と競合**する
   (C-x 3 適用前の 2 窓状態、またはフレーム先頭の screen_clear 直後に下窓が
   未描画)。`expect_occ`/`expect_count` 系(件数アサート)は分割直後の
@@ -245,11 +263,15 @@
   が Undefined で上書き)は鎖先頭 else if 連結で解消、76/76 PASS。
 - 2026-10-24: **fix #5(コミット dadc431)**: R-2(release スモーク `test-design/release_smoke.sh`
   6 シナリオ PASS)+R-4(.gitignore 3 項目)。
-- 2026-10-24: **fix #6(このコミット)**: R-1(clippy スイープ)。102 件 → `cargo clippy --fix`
+- 2026-10-24: **fix #6(コミット 64c4fd7)**: R-1(clippy スイープ)。102 件 → `cargo clippy --fix`
   で 92 件自動適用+残り 10 件を手当てして **clippy 警告 0 行**。AGENT.md に clippy ゼロ則追記。
   全 6 ファイル+AGENT.md の変更。e2e 76/76、release スモーク 6/6、cargo test 16/16。
   コミット前ゲートレビュー APPROVE(全 62 hunk の意味変化監査、Blocker/Major なし)。
   Minor drive-by: terminal.rs EOF コメント復元、word_eq を allocation-free zip 版に
   (旧版はキーワード毎 Vec 確保で hot path)、自動修正の産物(`}//` 密着/空 if)掃除。
   word_eq 置換後は unit 16/16+e2e s103/s105(ハイライト実色アサート)+release スモーク 6/6 で検証。
-  (fix #6 のコミットハッシュは次エントリに記載)
+- 2026-10-24: **fix #7(このコミット)**: M-6(C-x C-f が同一ファイルを毎回新規バッファ化)。
+  既存バッファ(`find_buffer` の名前一致=C-x b と同一基準)を disk 再読込なしで表示。
+  表示済み窓では no-op。表示ロジックは `show_buffer` に集約(単窓→分割下/分割木→現窓)。
+  e2e s148(編集保持+重複なし)。README/keybindings 記述追加。
+  (fix #7 のコミットハッシュは次エントリに記載)

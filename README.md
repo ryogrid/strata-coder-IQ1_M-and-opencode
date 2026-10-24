@@ -119,7 +119,11 @@ Run the editor from a real terminal:
   accepts the typed input.
 - **File operations** — `C-x C-f` opens a file into the active window's
   buffer (with a lone window it first splits below and shows the file there;
-  buffer name = path, shown by the status line); `C-x C-s` saves the
+  buffer name = path, shown by the status line; opening a file whose buffer
+  already exists REUSES that buffer — no duplicate buffer is created and the
+  buffer's edits and modified flag are kept, no disk re-read; matching is by
+  buffer name, so a buffer saved with `C-x C-w` keeps its own name (e.g.
+  `*demo*`) and is NOT matched); `C-x C-s` saves the
   buffer to its filename; `C-x C-w` writes to a named file and records it
   ONLY on success (a failed write leaves the save target untouched), so
   later `C-x C-s` saves there; `C-x C-i` inserts the contents of a file
@@ -195,7 +199,7 @@ Run the editor from a real terminal:
 | `C-y` | paste killed text at point (consecutive `C-k`s accumulate, including the newline) |
 | `C-@` (`C-space`, NUL) | set the mark at point (start a region); when mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the region edge |
 | `C-q` | quote: insert next key literally |
-| `C-x C-f` | open file in a new split window below (buffer name = path, status shows it; prompt in the bottom row, end with Enter; Tab completes a path from the directory listing) |
+| `C-x C-f` | open file in a new split window below (buffer name = path, status shows it; an existing buffer for that file is reused, not reloaded; prompt in the bottom row, end with Enter; Tab completes a path from the directory listing) |
 | `C-x b` | switch-to-buffer: buffer name typed in the bottom-row minibuffer prompt (Tab completes a buffer name), Enter switches the active window to that buffer (creates an empty one if new) |
 | `C-x C-b` | list all buffer names in the bottom-row minibuffer; Tab completes among them; type a name + Enter to select and switch, Enter alone cycles to the next buffer |
 | `C-x C-s` | save buffer to its file |
