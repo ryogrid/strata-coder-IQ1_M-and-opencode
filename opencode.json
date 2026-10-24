@@ -17,9 +17,9 @@
           }
         },
         "qwen3.8-flash-next-swift": {
-          "name": "Qwen3.8-Flash-Next Swift IQ3_S 64k (Strata)",
+          "name": "Qwen3.8-Flash-Next Swift IQ3_S Q4_0 256k (Strata)",
           "limit": {
-            "context": 131072,
+            "context": 262144,
             "output": 8192
           }
         }
