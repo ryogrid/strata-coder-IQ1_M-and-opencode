@@ -1,6 +1,8 @@
 // A buffer backed by a gap buffer (the same conceptual structure Emacs uses).
 // All positions are logical char indices (0..len). The gap is the half-open
-// array range [gap_start, gap_end).
+// array range [gap_start, gap_end). Invariant: chars inside the gap window is
+// '\0' PADDING, never live text - only text()/char_at/swap_at (via to_index)
+// may address text, and they only accept logical positions pos < len().
 pub struct Buffer {
     pub name: String,
     pub filename: Option<String>,
@@ -16,16 +18,25 @@ pub fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+// Gap pre-allocation size: insertions consume the gap in O(1); an exhausted
+// gap is re-widened in place at the insertion point (O(n) once per GAP
+// inserts), making insert amortized O(1) (Design Doc B / B-1).
+const GAP: usize = 8192;
+
 impl Buffer {
     pub fn new(name: String, text: String) -> Buffer {
-        let chars = text.chars().collect::<Vec<char>>();
+        let mut chars = text.chars().collect::<Vec<char>>();
+        let n = chars.len();
+        // Reserve the gap at the END: window [n, n+GAP), size GAP.
+        // (gap_start = gap_end would be a size-0 gap: len() would inflate.)
+        chars.resize(n + GAP, '\0');
         Buffer {
             name: name,
             filename: None,
             modified: false,
             chars: chars,
-            gap_start: 0,
-            gap_end: 0,
+            gap_start: n,
+            gap_end: n + GAP,
             point: 0,
             mark: 0,
         }
@@ -59,17 +70,30 @@ impl Buffer {
 
     pub fn insert_char(self: &mut Buffer, c: char) {
         self.move_gap(self.point);
-        if self.gap_start < self.gap_end {
-            self.chars[self.gap_start] = c;
-            self.gap_start += 1;
-        } else {
-            self.chars.insert(self.gap_start, c);
-            self.gap_start += 1;
-            self.gap_end += 1;
+        if self.gap_start == self.gap_end {
+            self.refill_gap(); // gap exhausted: widen in place at this point
         }
+        self.chars[self.gap_start] = c;
+        self.gap_start += 1;
         self.point += 1;
         self.mark = self.point;
         self.modified = true;
+    }
+
+    // Insert s at point, advancing it (amortized O(len(s)) with the gap).
+    pub fn insert_string(self: &mut Buffer, s: &str) {
+        for c in s.chars() {
+            self.insert_char(c);
+        }
+    }
+
+    // Widen the (empty) gap window at gap_start by splicing GAP padding in
+    // place, pushing the right segment back. A per-char Vec::insert loop
+    // would be O(n*GAP); tail resize would not put the gap at this point.
+    fn refill_gap(self: &mut Buffer) {
+        let gs = self.gap_start;
+        self.chars.splice(gs..gs, std::iter::repeat_n('\0', GAP));
+        self.gap_end = gs + GAP;
     }
 
     pub fn delete_forward(self: &mut Buffer) -> bool {
@@ -195,13 +219,14 @@ impl Buffer {
 
     pub fn insert_newline_after(self: &mut Buffer) {
         self.move_gap(self.point);
-        if self.gap_start < self.gap_end {
-            self.chars[self.gap_start] = '\n';
-            self.gap_start += 1;
-        } else {
-            self.chars.insert(self.gap_start, '\n');
-            self.gap_end += 1;
+        if self.gap_start == self.gap_end {
+            self.refill_gap();
         }
+        // NB: the old Vec::insert branch forgot `gap_start += 1`, so the
+        // inserted '\n' was swallowed by the gap window (silent C-o no-op
+        // on a fresh buffer - Design Doc B / F-4). Consume the gap instead.
+        self.chars[self.gap_start] = '\n';
+        self.gap_start += 1;
         self.mark = self.point;
         self.modified = true;
     }
@@ -278,70 +303,63 @@ impl Buffer {
         }
     }
 
-    pub fn find_forward(self: &Buffer, pat: &String, from: usize) -> Vec<usize> {
-        let mut tchars: Vec<char> = vec![];
-        for c in self.text().chars() {
-            tchars.push(c);
-        }
-        let mut pchars: Vec<char> = vec![];
-        for c in pat.chars() {
-            pchars.push(c);
-        }
-        if pchars.len() == 0 || from + pchars.len() > tchars.len() {
-            return vec![];
+    // Scan with char_at (O(1) through the gap): no full text() copy per call
+    // (B-2/B-4). Returns the match END position, as before.
+    pub fn find_forward(self: &Buffer, pat: &String, from: usize) -> Option<usize> {
+        let pchars: Vec<char> = pat.chars().collect();
+        let m = pchars.len();
+        if m == 0 || from + m > self.len() {
+            return None;
         }
         let mut i = from;
-        while i + pchars.len() <= tchars.len() {
+        while i + m <= self.len() {
             let mut ok = true;
             let mut k = 0;
-            while k < pchars.len() {
-                if tchars[i + k] != pchars[k] {
+            while k < m {
+                if self.char_at(i + k) != pchars[k] {
                     ok = false;
+                    break;
                 }
                 k += 1;
             }
             if ok {
-                return vec![i + pchars.len()];
+                return Some(i + m);
             }
             i += 1;
         }
-        vec![]
+        None
     }
 
-    pub fn find_backward(self: &Buffer, pat: &String, from: usize) -> Vec<usize> {
-        let mut tchars: Vec<char> = vec![];
-        for c in self.text().chars() {
-            tchars.push(c);
-        }
-        let mut pchars: Vec<char> = vec![];
-        for c in pat.chars() {
-            pchars.push(c);
-        }
-        if pchars.len() == 0 || pchars.len() > tchars.len() || from == 0 {
-            return vec![];
+    // Backward scan: returns the match START position, as before.
+    pub fn find_backward(self: &Buffer, pat: &String, from: usize) -> Option<usize> {
+        let pchars: Vec<char> = pat.chars().collect();
+        let m = pchars.len();
+        if m == 0 || m > self.len() || from == 0 {
+            return None;
         }
         let mut i = from - 1;
-        if i > tchars.len() - pchars.len() {
-            i = tchars.len() - pchars.len();
+        if i > self.len() - m {
+            i = self.len() - m;
         }
         loop {
             let mut ok = true;
             let mut k = 0;
-            while k < pchars.len() {
-                if tchars[i + k] != pchars[k] {
+            while k < m {
+                if self.char_at(i + k) != pchars[k] {
                     ok = false;
+                    break;
                 }
                 k += 1;
             }
             if ok {
-                return vec![i];
+                return Some(i);
             }
             if i == 0 {
                 break;
             }
             i -= 1;
         }
-        vec![]
+        None
     }
 
     pub fn text(self: &Buffer) -> String {
@@ -394,6 +412,79 @@ fn cursor_movement() {
     assert!(b.point == 7);
     b.forward_char();
     assert!(b.point == 8);
+}
+#[test]
+fn gap_prealloc_identity() {
+    // Design Doc B / B-1: the gap window is pre-allocated at the END with
+    // SIZE GAP (gap_start = n, gap_end = n + GAP), so len() stays exact.
+    let mut b = Buffer::new("t".to_string(), "hello".to_string());
+    assert!(b.text() == "hello");
+    assert!(b.len() == 5);
+    assert!(b.chars.len() == 5 + GAP);
+    assert!(b.gap_start == 5 && b.gap_end == 5 + GAP);
+    b.point = 2;
+    b.insert_char('X'); // slides the gap to the insertion point, then O(1)
+    assert!(b.text() == "heXllo");
+    assert!(b.len() == 6);
+}
+#[test]
+fn gap_refill_amortized() {
+    // Typing at the front slides the pre-allocated gap once, then inserts
+    // are O(1); at exhaustion the gap is re-widened IN PLACE at the point.
+    let mut b = Buffer::new("t".to_string(), "hello".to_string());
+    for k in 0..(GAP + 3) {
+        b.insert_char(char::from(b'a' + (k % 26) as u8));
+        assert!(b.chars.len() - b.len() <= GAP); // never widens past GAP
+    }
+    assert!(b.len() == 5 + GAP + 3);
+    assert!(b.text().starts_with("abc") && b.text().ends_with("hello"));
+}
+#[test]
+fn c_o_fresh_and_refill_boundary() {
+    // F-4: the old Vec::insert branch of insert_newline_after lacked
+    // gap_start += 1, swallowing the '\n' into the gap (silent C-o no-op).
+    let mut b = Buffer::new("t".to_string(), "one\ntwo".to_string());
+    b.point = 3;
+    b.insert_newline_after(); // fresh buffer: pre-allocated gap covers it
+    assert!(b.text() == "one\n\ntwo");
+    let mut c = Buffer::new("t".to_string(), "abc".to_string());
+    c.end_of_buffer();
+    for _ in 0..GAP {
+        c.insert_char('x'); // consume the whole gap at the tail
+    }
+    assert!(c.gap_start == c.gap_end);
+    c.insert_newline_after(); // refill boundary: must not be swallowed
+    assert!(c.text().ends_with("\n"));
+    assert!(c.len() == 3 + GAP + 1);
+}
+#[test]
+fn find_matrix() {
+    let b = Buffer::new("t".to_string(), "hello hello".to_string());
+    assert!(b.find_forward(&"hello".to_string(), 0) == Some(5));
+    assert!(b.find_forward(&"hello".to_string(), 1) == Some(11));
+    assert!(b.find_forward(&"hello".to_string(), 7).is_none());
+    assert!(b.find_forward(&"x".to_string(), 0).is_none());
+    assert!(b.find_forward(&"".to_string(), 0).is_none());
+    assert!(b.find_forward(&"hello".to_string(), 9).is_none()); // from + m > len
+    assert!(b.find_backward(&"hello".to_string(), 11) == Some(6));
+    assert!(b.find_backward(&"hello".to_string(), 5) == Some(0));
+    assert!(b.find_backward(&"hello".to_string(), 0).is_none());
+    assert!(b.find_backward(&"x".to_string(), 5).is_none());
+    // the gap must not distort scans: edit, then search the edited text
+    let mut m = Buffer::new("t".to_string(), "hello hello".to_string());
+    m.point = 5;
+    m.insert_char('!');
+    assert!(m.find_forward(&"o! ".to_string(), 0) == Some(7));
+    assert!(m.find_backward(&"! he".to_string(), 12) == Some(5));
+}
+#[test]
+fn insert_string_advances_point() {
+    let mut b = Buffer::new("t".to_string(), "ab".to_string());
+    b.point = 1;
+    b.insert_string("xy");
+    assert!(b.text() == "axyb");
+    assert!(b.point == 3);
+    assert!(b.modified);
 }
 #[test]
 fn editing_and_navigation() {

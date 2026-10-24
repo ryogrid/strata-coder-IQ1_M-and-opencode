@@ -19,13 +19,13 @@
 - [x] **M-1**: go-to-line の u32 溢れ panic(実測 exit 101)。`parse` + バッファ行数へのクランプに置換(debug/release 挙動差=R-2 も参照)。02 §M-1 / Design Doc A → デジタルゲート+u64 parse+総行数バウンドでクランプ維持。e2e s141 追加
 - [x] **T-3**: raw mode 復元を Drop ガード+panic hook+シグナルハンドラで保証。04 §T-3 / Design Doc A → TtyGuard Drop + static AtomicPtr + SIGTERM/HUP/INT/QUIT(pty 実測: exit 143 で復元)
 - [ ] **M-3**: C-s 増分検索中の矢印キー ESC accept 後、残 `[A` が self-insert される。02 §M-3
-- [ ] **H-1**: `heq_at` の全文 clone で styles が O(n²)(451KB 1フレーム実測12.9秒)。スライス参照化。受入目標: 451KB .rs で 1フレーム < 1秒。05 §H-1 / Design Doc B
-- [ ] **S-1**: draw_all が全バッファを毎フレーム複数回走査+全面 print。text() 1回化+styles 1回化(可視行範囲 styles と差分描画は Design Doc B でスコープ判断)。03 §S-1 / Design Doc B
+- [x] **H-1**: `heq_at` の全文 clone で styles が O(n²)(451KB 1フレーム実測12.9秒)。スライス参照化。受入目標: 451KB .rs で 1フレーム < 1秒。05 §H-1 / Design Doc B → 全関数スライス化。受入ビルド=debug で 15.3s→0.122s(約10倍の余裕。fix #2)
+- [x] **S-1**: draw_all が全バッファを毎フレーム複数回走査+全面 print。text() 1回化+styles 1回化(可視行範囲 styles と差分描画は Design Doc B でスコープ判断)。03 §S-1 / Design Doc B → BufView フレームキャッシュ(text()/lines/offs/toks をバッファ毎1回、窓共有時1回)。可視範囲限定・差分描画はスコープ外と明記(fix #2)
 
 ## Phase 2: 中優先(Medium)
 
-- [ ] **B-1**: gap buffer が gap を前確保せず挿入 O(n)。new() で gap 預け插入 O(1) 償却。01 §B-1 / Design Doc B
-- [ ] **B-2**: find_forward/backward が毎回全文 text() 生成。char_at 直接スキャンへ。01 §B-2 / Design Doc B
+- [x] **B-1**: gap buffer が gap を前確保せず挿入 O(n)。new() で gap 預け插入 O(1) 償却。01 §B-1 / Design Doc B → 末尾にサイズ GAP=8192 前確保+枯渇時 splice で in-place 再充填(fix #2)。潜行バグ insert_newline_after の gap_start += 1 欠落(F-4)も同時修正・テスト固定
+- [x] **B-2**: find_forward/backward が毎回全文 text() 生成。char_at 直接スキャンへ。01 §B-2 / Design Doc B → Option<usize> 戻り値で直接スキャン(fix #2)
 - [ ] **B-3**: kill_to_end_of_line が mark 後方(同一行)で無音 no-op。後方 mark は領域なし扱いへ。01 §B-3
 - [x] **M-4**: メインループ EOF が未保存バッファを無警告破棄。方針決定(EOF=終了据え置き+dirty 時のメッセージ/文書化)。02 §M-4 / Design Doc A → 方針確定・README/keybindings に明記(fix #1)。確認プロンプトは付けない(stdin 閉鎖後は確認不能が本質)
 - [ ] **M-5**: C-x k が modified バッファを無確認で空にする。確認プロンプト追加。02 §M-5
@@ -37,8 +37,8 @@
 - [ ] **S-2**: 全角(CJK)を幅1として扱う。セル数基準化。03 §S-2 / Design Doc C
 - [ ] **S-3**: split/collapse で tree のスロットが単調増加(未回收)。03 §S-3
 - [x] **T-4**: read(2) エラーを EOF と同一視。Err では再試行ループとし Ok(0) をもって EOF とする(std が EINTR を再試行する事実を確認したらコメントで明文化)。04 §T-4 / Design Doc A → 再試行ループ実装。実測: std の StdinLock::read は EINTR を自動再試行しない(Err(Interrupted) を返す)ため explicit ループが本体。コメント明記済み(fix #1)
-- [ ] **H-2**: Rust のライフタイム `'a` を文字列として誤色。lang1 の `'` 処理改善。05 §H-2 / Design Doc B
-- [ ] **H-3**: detect が拡張子の大文字小文字を区別しない(FILE.RS 無装飾)。05 §H-3 / Design Doc B
+- [x] **H-2**: Rust のライフタイム `'a` を文字列として誤色。lang1 の `'` 処理改善。05 §H-2 / Design Doc B → 3条件(同一行閉じ/j>=i+2/内容が string 的)採用。フィクスチャ `fn f<'de>(x: &'de str) {}` をテストで固定(fix #2)
+- [x] **H-3**: detect が拡張子の大文字小文字を区別しない(FILE.RS 無装飾)。05 §H-3 / Design Doc B → ASCII 小文字化比較+fizz マトリクステスト(fix #2)
 - [ ] **R-1**: clippy 94 件。`cargo clippy --fix` + 手当てで掃除。完了ゲート: `cargo clippy` 警告0行(AGENT.md に clippy ルール追記)。06 §R-1
 - [ ] **R-2**: e2e が debug のみ。release での代表スモーク追加。06 §R-2
 - [ ] **R-3**: window/screen の単体テスト追加(buffer=find 系は B-9、highlight は H-8 が担当)。06 §R-3
@@ -53,10 +53,10 @@
 
 ## Phase 3: 低優先(Low)
 
-- [ ] **B-4**: find 系/`find_buffer` の `Vec<usize>` 戻り値を `Option<usize>` へ。01 §B-4
+- [x] **B-4**: find 系/`find_buffer` の `Vec<usize>` 戻り値を `Option<usize>` へ。01 §B-4 → find 系は fix #2 で先取り解消(main.rs 4 箇所 Option 化)。`find_buffer`(main.rs:21)は「一致列」を返す別関数のため `Vec<usize>` のまま(Design Doc B に方針明記)
 - [ ] **B-5**: transpose_chars が点=0で先頭2文字を swap(Emacs は no-op)。01 §B-5
 - [ ] **B-6**: 「編集で領域が消える(mark 追従)」を README に明文化。01 §B-6
-- [ ] **B-9**: buffer の find/クランプ/move_gap 単体テスト追加。01 §B-9
+- [ ] **B-9**: buffer の find/クランプ/move_gap 単体テスト追加。01 §B-9 → (部分)find/gap/move_gap(挿入経路)/insert_newline_after は fix #2 で追加済。クランプ系は e2e s112/s141 が担保。残り: line_start/line_end 境界の unit
 - [ ] **B-10**: `self: &Buffer` → `&self`、String 引数 → `&str`/`Into<String>`。01 §B-10
 - [ ] **M-11**: 300行ディスパッチをテーブル化(architecture の keymap tree 記述と共に対応)。02 §M-11
 - [ ] **M-12**: prev_cmd は last-command 相当に限定(現状文書と整合、注記のみ)。02 §M-12
@@ -79,7 +79,7 @@
 - [ ] **H-5**: 数値スキャン過装飾(2hex)の軽微修正/注記。05 §H-5
 - [ ] **H-6**: HTML タグ内属性文字列の装飾(注記)。05 §H-6
 - [ ] **H-7**: スタイルコードを enum 化。05 §H-7
-- [ ] **H-8**: detect/styles の単体テスト追加。05 §H-8
+- [x] **H-8**: detect/styles の単体テスト追加。05 §H-8 → fix #2 で追加(detect 拡張子マトリクス、lifetime フィクスチャ、string/char リテラル、json、md)
 - [ ] **R-5**: curses 依存縮小(size 検出のみ)/[profile] 注記。06 §R-5
 - [ ] **R-6**: CI 追加(build+test+clippy+e2e)。06 §R-6
 - [ ] **D-6**: keybindings.md の C-d 二重掲載・C-\ 凡例削除。07 §D-6
@@ -127,6 +127,28 @@
   今回 113GB 空きを確保。
 - **clippy 件数 94→101**: fix #1 の新代码は既存 lint カテゴリ
   (needless_return 等)を増やしただけ。R-1 で一括掃除するまで許容閾値とみなす。
+- **gap 前確保の設計ポイント(fix #2)**: `new()` は末尾に**サイズ GAP** の窓
+  (`gap_start=n; gap_end=n+GAP`)を置く。`gap_start==gap_end`(サイズ0)は
+  len() が過大になり不正。挿入で枯渇したら `Vec::splice(gs..gs, repeat_n('\0', GAP))
+  で**挿入地点に**窓を開ける(末尾 resize では挿入地点の窓にならない。
+  1文字 Vec::insert を GAP 回繰り返すのは O(n·GAP))。`chars.len()-len()`=窓サイズ
+  が常に成り立ち、テストの不変条件に使える(text()/len() は常に正)。
+- **潜行バグ(F-4)**: `insert_newline_after` の旧 Vec::insert 分岐は
+  `gap_start += 1` 欠落で挿入文字が gap に呑まれ、fresh load 直後の C-o が
+  無音 no-op だった(既存テストは先行 delete で gap 非空のため素通り)。
+  「gap がある前提の分岐」を新設するときは**全経路の窓整合**を見る。
+- **性能ゲートの実測(debug)**: 451KB .rs 初回フレーム 15.3s → 0.122s。
+  100KB=0.043s、342KB CJK=0.084s。`</dev/null` 起動は初回フレーム描画→EOF 終了なので
+  `time` がそのまま 1 フレーム計測になる(fix #1 の EOF 終了に依存)。
+- **ゲートレビューが証言のズレを検出**: fix #2 のゲートで「C-y も insert_string 化と
+  書いてあるがコードは未移行」を Major 指摘された。**コミットメッセージ/証言は
+  コードと突き合わせてから書く**(Design Doc §2.4 の使用者2名のうち C-x C-i だけ置換した)。
+  実害はなかった(償却 O(1) のループだった)が、設計準拠と証言精度の問題。
+- **octal 罠**: `printf '\021'` は octal 21=0x11(C-q)。C-y=0x19 は `\031`。
+  パイプ再現テストのキーは 16 進換算を必ず確認する(C-y 検証が最初 C-q になっていた)。
+- **clippy 実測ベースライン**: HEAD=109 → fix #2 作業ツリー=118(ゲート計測)。
+  新規カテゴリ(manual_repeat_n/partialeq_to_none/unnecessary_cast/ptr_arg×2)は
+  ドライブバイ修正済み(100 に減少)。R-1 の対象として計上。
 - **e2e s21 の Flake 根本原因(既存)**: 単発キャプチャが**描画と競合**する
   (C-x 3 適用前の 2 窓状態、またはフレーム先頭の screen_clear 直後に下窓が
   未描画)。`expect_occ`/`expect_count` 系(件数アサート)は分割直後の
@@ -145,9 +167,18 @@
 - 2026-10-24: Design Doc A 作成(`docs/design/exit-eof-robustness.md`、コミット eb95b5a)。
   サブエージェントレビュー APPROVE-WITH-CHANGES → Blocker#1(M-1 のハング)を
   「移動ループを総行数に束縛(クランプ維持)」で解消する版に置換して反映。
-- 2026-10-24: **fix #1(このコミット)**: T-1/T-2/M-1/M-2/M-4/T-3/T-4/D-1 実装。
+- 2026-10-24: **fix #1(コミット 4e461ec)**: T-1/T-2/M-1/M-2/M-4/T-3/T-4/D-1 実装。
   コミット前ゲートレビュー APPROVE(C-q EOF の NUL 限界コメント、C-x C-c 行 EOF 記述を反映)。
   e2e に s140/s141/s142 追加(パイプラナー rc+サイズ+内容アサート)。
-  実施中の追加対応: e2e s21 が Flake(境界行+境界列同時で grep 件数 2 化/境界行幅=cols=80)
-  → 明示レイアウトアサートに置換(単体 3/3 通過)。学習記録に追加。
-  (fix #1 のコミットハッシュは次エントリに記載)
+  実施中の追加対応: e2e s21 が Flake(描画競合。境界行幅=cols=80)→ 明示レイアウト
+  アサート+ポーリングに置換(単体 3/3 通過)。学習記録に追加。
+- 2026-10-24: Design Doc B 作成(`docs/design/perf-highlight-buffer.md`、コミット e9c83e6)。
+  ゲートレビュー APPROVE-WITH-CHANGES 反映: gap 窓は「サイズ GAP」で前確保(F-1)、
+  再充填は挿入地点 in-place splice(F-2)、insert_newline_after の潜行バグ F-4 をスコープ化、
+  H-2 は 3 条件+フィクスチャ固定(F-5)、受け入れビルド=debug 明記(F-6)、
+  メモリ/残存コスト/padding 不変条件/CJK 計測の注記追加。
+- 2026-10-24: **fix #2(このコミット)**: H-1/S-1/B-1/B-2/H-2/H-3/B-4(find 系)+B-9 部分
+  +H-8 完了。コミット前ゲート APPROVE-WITH-CHANGES → C-y の insert_string 化漏れ(Major)を
+  反映+新規 clippy カテゴリをドライブバイ修正。性能: 451KB debug 15.3s→0.122s。
+  cargo test 16/16、e2e 71/71、ビルド警告ゼロ。
+  (fix #2 のコミットハッシュは次エントリに記載)

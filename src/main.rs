@@ -174,9 +174,7 @@ fn main() {
             } else if n == 0x09 { // Ctrl-x Ctrl-i: insert-file
                 let path = terminal::read_line_files("Insert file: ".to_string());
                 if path.len() > 0 {
-                    for c in read_file(path.to_string()).chars() {
-                        bufs[bi].insert_char(c);
-                    }
+                    bufs[bi].insert_string(&read_file(path.to_string()));
                     msg = format!("Inserted file {}", path);
                 }
             } else if n == 0x6b { // Ctrl-x k: kill-buffer
@@ -249,9 +247,9 @@ fn main() {
                     if qs.len() > 0 {
                         let q2 = terminal::str_of(qs.clone());
                         let hit = bufs[bi].find_forward(&q2, 0);
-                        if hit.len() > 0 {
-                            bufs[bi].point = hit[0];
-                            last = hit[0] - qs.len();
+                        if let Some(end) = hit {
+                            bufs[bi].point = end;
+                            last = end - qs.len();
                         }
                     }
                     continue;
@@ -272,12 +270,13 @@ fn main() {
                     echo_ch = cc.to_string();
                 }
                 let q2 = terminal::str_of(attempt.clone());
-                let hit = bufs[bi].find_forward(&q2, from);
-                let hit2 = if hit.len() > 0 { hit } else { bufs[bi].find_forward(&q2, 0) };
-                if hit2.len() > 0 {
+                let hit = bufs[bi]
+                    .find_forward(&q2, from)
+                    .or_else(|| bufs[bi].find_forward(&q2, 0)); // wrap once
+                if let Some(end) = hit {
                     qs = attempt;
-                    bufs[bi].point = hit2[0];
-                    last = hit2[0] - qs.len();
+                    bufs[bi].point = end;
+                    last = end - qs.len();
                     if c2 != 0x13 {
                         print!("{}", echo_ch); // echo the query char
                     }
@@ -297,8 +296,8 @@ fn main() {
             let q = terminal::read_line("Reverse find: ".to_string());
             if q.len() > 0 {
                 let hit = bufs[bi].find_backward(&q, bufs[bi].point);
-                if hit.len() > 0 {
-                    bufs[bi].point = hit[0];
+                if let Some(start) = hit {
+                    bufs[bi].point = start;
                     msg = "".to_string();
                 } else {
                     msg = format!("Search string not found: {}", q);
@@ -359,9 +358,7 @@ fn main() {
                 killed = cut;
             }
         } else if b == 0x19 { // Ctrl-y: paste the killed text at point
-            for c in killed.chars() {
-                bufs[bi].insert_char(c);
-            }
+            bufs[bi].insert_string(&killed);
         } else if b == 0x05 {
             bufs[bi].end_of_line(); // Ctrl-e
         } else if b == 0x0c { // Ctrl-l: go-to-line (minibuffer reads a line number)

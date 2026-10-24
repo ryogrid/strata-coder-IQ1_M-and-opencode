@@ -19,22 +19,45 @@ pub fn screen_clear() {
     print!("\x1b[2J\x1b[1;1H");
 }
 
-pub fn split_lines(text: String) -> Vec<String> {
+// Per-frame render cache for one buffer (Design Doc B / S-1): text(), lines,
+// line offsets and style tokens are each computed ONCE per frame per buffer,
+// shared by all windows showing it. Cost is ~15 bytes/char (chars 4B, toks
+// 8B, lines 1-3B UTF-8, per-line overhead) - a 451KB buffer peaks ~7-9MB
+// per frame, freed when draw_all returns.
+struct BufView {
+    chars: Vec<char>,
+    lines: Vec<String>,
+    offs: Vec<usize>,
+    toks: Vec<usize>,
+}
+
+fn view_of(views: &mut [Option<BufView>], bufs: &[Buffer], bidx: usize) {
+    if views[bidx].is_none() {
+        let buf = &bufs[bidx];
+        let chars: Vec<char> = buf.text().chars().collect();
+        let lines = split_lines(&chars);
+        let offs = line_offsets(&lines);
+        let toks = styles(&chars, detect(&buf.name));
+        views[bidx] = Some(BufView { chars: chars, lines: lines, offs: offs, toks: toks });
+    }
+}
+
+pub fn split_lines(chars: &[char]) -> Vec<String> {
     let mut lines: Vec<String> = vec![];
     let mut current: Vec<char> = vec![];
-    for c in text.chars() {
-        if c == '\n' {
+    for c in chars {
+        if *c == '\n' {
             lines.push(current.iter().collect::<String>());
             current = vec![];
         } else {
-            current.push(c);
+            current.push(*c);
         }
     }
     lines.push(current.iter().collect::<String>());
     lines
 }
 
-pub fn line_offsets(lines: Vec<String>) -> Vec<usize> {
+pub fn line_offsets(lines: &[String]) -> Vec<usize> {
     let mut offs: Vec<usize> = vec![];
     let mut acc = 0;
     for l in lines {
@@ -48,15 +71,15 @@ pub fn line_offsets(lines: Vec<String>) -> Vec<usize> {
     offs
 }
 
-pub fn point_pos(text: String, point: usize) -> Vec<usize> {
+pub fn point_pos(chars: &[char], point: usize) -> Vec<usize> {
     let mut pline = 0;
     let mut pcol = 0;
     let mut seen = 0;
-    for c in text.chars() {
+    for c in chars {
         if seen >= point {
             break;
         }
-        if c == '\n' {
+        if *c == '\n' {
             pline += 1;
             pcol = 0;
         } else {
@@ -82,6 +105,11 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     let height = if rows > 1 { rows - 1 } else { 1 };
     let frames = tree.layout(tree.root, 0, height, 0, cols);
 
+    let mut views: Vec<Option<BufView>> = (0..bufs.len()).map(|_| None).collect();
+    // S-10: point_pos is computed ONCE per leaf here and reused by the
+    // cursor placement below (was computed twice per active leaf).
+    let mut leaf_pos: Vec<(usize, usize)> = vec![(0, 0); tree.leaves.len()];
+
     let mut f = 0;
     while f < frames.len() {
         if frames[f].kind > 0 {
@@ -89,8 +117,10 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
             continue;
         }
         let leaf_idx = frames[f].leaf;
-        let buf = &bufs[tree.leaves[leaf_idx].buffer];
-        let pos = point_pos(buf.text(), tree.leaves[leaf_idx].point);
+        let bidx = tree.leaves[leaf_idx].buffer;
+        view_of(&mut views, bufs, bidx);
+        let pos = point_pos(&views[bidx].as_ref().unwrap().chars, tree.leaves[leaf_idx].point);
+        leaf_pos[leaf_idx] = (pos[0], pos[1]);
         let pline = pos[0];
         let mut scroll = tree.leaves[leaf_idx].scroll;
         if pline < scroll {
@@ -136,38 +166,35 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
             continue;
         }
         let leaf_idx = frames[i].leaf;
-        let buf = &bufs[tree.leaves[leaf_idx].buffer];
-        let lines = split_lines(buf.text());
-        let lang = detect(buf.name.clone());
-        let toks = styles(buf.text(), lang);
-        let offs = line_offsets(lines.clone());
+        let bidx = tree.leaves[leaf_idx].buffer;
+        view_of(&mut views, bufs, bidx);
+        let buf = &bufs[bidx];
+        let view = views[bidx].as_ref().unwrap();
         let mut r = 0;
         while r < frames[i].height {
             let li = tree.leaves[leaf_idx].scroll + r;
-            if li < lines.len() {
-                let off = offs[li];
+            if li < view.lines.len() {
+                let off = view.offs[li];
                 let mut line_styles: Vec<usize> = vec![];
                 let mut k = 0;
-                while k < lines[li].len() {
-                    if off + k < toks.len() {
-                        line_styles.push(toks[off + k]);
+                while k < view.lines[li].len() {
+                    if off + k < view.toks.len() {
+                        line_styles.push(view.toks[off + k]);
                     } else {
                         line_styles.push(0);
                     }
                     k += 1;
                 }
-                draw_cell(frames[i].top + r, frames[i].col, lines[li].clone(), frames[i].width, line_styles);
+                draw_cell(frames[i].top + r, frames[i].col, view.lines[li].clone(), frames[i].width, line_styles);
             } else {
                 draw_cell(frames[i].top + r, frames[i].col, "@".to_string(), frames[i].width, vec![]);
             }
             r += 1;
         }
         if leaf_idx == active {
-            let pos = point_pos(buf.text(), tree.leaves[leaf_idx].point);
-            let pline = pos[0];
-            let pcol = pos[1];
+            let (pline, pcol) = leaf_pos[leaf_idx]; // computed once in the prepass (S-10)
             st_line = pline + 1;
-            st_total = lines.len();
+            st_total = view.lines.len();
             let len = buf.len();
             st_pct = if len > 0 { tree.leaves[leaf_idx].point * 100 / len } else { 0 };
             crow = frames[i].top + (pline - tree.leaves[leaf_idx].scroll);
@@ -242,7 +269,7 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
     // Build the line with SGR escapes injected on style changes; escapes are
     // zero-width so padding/width maths above stays correct.
     let mut out: Vec<char> = vec![];
-    for cc in hchars_of("\x1b[0m".to_string()) {
+    for cc in hchars_of("\x1b[0m") {
         out.push(cc);
     }
     let mut cur = 0;
@@ -250,7 +277,7 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
     while j < chars.len() {
         let s = stys[j];
         if s != cur {
-            for cc in hchars_of(style_esc(s)) {
+            for cc in hchars_of(&style_esc(s)) {
                 out.push(cc);
             }
             cur = s;
@@ -259,7 +286,7 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
         j += 1;
     }
     if cur != 0 {
-        for cc in hchars_of("\x1b[0m".to_string()) {
+        for cc in hchars_of("\x1b[0m") {
             out.push(cc);
         }
     }

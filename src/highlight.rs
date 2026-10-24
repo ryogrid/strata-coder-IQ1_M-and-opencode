@@ -4,27 +4,35 @@
 // Languages (codes): 0 plain, 1 c-family (rs c cpp h js ts go css),
 // 2 hash-family (py sh rb yaml toml), 3 json, 4 markdown, 5 html/xml.
 
-pub fn hchars_of(h: String) -> Vec<char> {
+pub fn hchars_of(s: &str) -> Vec<char> {
     let mut cs: Vec<char> = vec![];
-    for c in h.chars() {
+    for c in s.chars() {
         cs.push(c);
     }
     cs
 }
 
-pub fn heq_at(cs: Vec<char>, i: usize, w: String) -> bool {
-    let ws = hchars_of(w);
-    if i + ws.len() > cs.len() {
-        return false;
-    }
+pub fn heq_at(cs: &[char], i: usize, w: &str) -> bool {
     let mut k = 0;
-    while k < ws.len() {
-        if cs[i + k] != ws[k] {
+    for wc in w.chars() {
+        if i + k >= cs.len() || cs[i + k] != wc {
             return false;
         }
         k += 1;
     }
     true
+}
+
+// word slice == literal (avoids per-word String allocation)
+fn word_eq(cs: &[char], w: &str) -> bool {
+    let mut k = 0;
+    for wc in w.chars() {
+        if k >= cs.len() || cs[k] != wc {
+            return false;
+        }
+        k += 1;
+    }
+    k == cs.len()
 }
 
 pub fn hwordc(c: char) -> bool {
@@ -39,7 +47,7 @@ pub fn hdigit(c: char) -> bool {
     c >= '0' && c <= '9'
 }
 
-pub fn detect(name: String) -> usize {
+pub fn detect(name: &str) -> usize {
     let cs = hchars_of(name);
     let n = cs.len();
     let mut start = 0;
@@ -61,62 +69,75 @@ pub fn detect(name: String) -> usize {
     if dot <= start {
         return 0;
     }
-    let at = dot + 1;
+    // H-3: extension matching is ASCII-case-insensitive (FILE.RS is Rust).
+    let ext: String = cs[dot + 1..].iter().collect();
+    let ext = ext.to_ascii_lowercase();
     let exts1 = vec!["rs", "c", "h", "cpp", "cc", "hpp", "js", "ts", "go", "css"];
     let exts2 = vec!["py", "sh", "rb", "yaml", "toml"];
     let exts4 = vec!["md", "markdown"];
     let exts5 = vec!["html", "xml"];
     for e in exts1.iter() {
-        if heq_at(cs.clone(), at, e.to_string()) && at + e.len() == n {
+        if ext == *e {
             return 1;
         }
     }
     for e in exts2.iter() {
-        if heq_at(cs.clone(), at, e.to_string()) && at + e.len() == n {
+        if ext == *e {
             return 2;
         }
     }
-    if heq_at(cs.clone(), at, "json".to_string()) && at + 4 == n {
+    if ext == "json" {
         return 3;
     }
     for e in exts4.iter() {
-        if heq_at(cs.clone(), at, e.to_string()) && at + e.len() == n {
+        if ext == *e {
             return 4;
         }
     }
     for e in exts5.iter() {
-        if heq_at(cs.clone(), at, e.to_string()) && at + e.len() == n {
+        if ext == *e {
             return 5;
         }
     }
     0
 }
 
-pub fn kw(lang: usize, w: String) -> bool {
+pub fn kw(lang: usize, w: &[char]) -> bool {
     if lang == 1 {
-        return w == "fn" || w == "let" || w == "const" || w == "if" || w == "else" ||
-            w == "for" || w == "while" || w == "return" || w == "struct" || w == "enum" ||
-            w == "impl" || w == "pub" || w == "use" || w == "match" || w == "case" ||
-            w == "switch" || w == "break" || w == "continue" || w == "true" ||
-            w == "false" || w == "new" || w == "class" || w == "void" || w == "int" ||
-            w == "char" || w == "float" || w == "double" || w == "bool" || w == "auto" ||
-            w == "package" || w == "import" || w == "func" || w == "var" || w == "type";
+        return word_eq(w, "fn") || word_eq(w, "let") || word_eq(w, "const") || word_eq(w, "if") ||
+            word_eq(w, "else") ||
+            word_eq(w, "for") || word_eq(w, "while") || word_eq(w, "return") || word_eq(w, "struct") ||
+            word_eq(w, "enum") ||
+            word_eq(w, "impl") || word_eq(w, "pub") || word_eq(w, "use") || word_eq(w, "match") ||
+            word_eq(w, "case") ||
+            word_eq(w, "switch") || word_eq(w, "break") || word_eq(w, "continue") || word_eq(w, "true") ||
+            word_eq(w, "false") || word_eq(w, "new") || word_eq(w, "class") || word_eq(w, "void") ||
+            word_eq(w, "int") ||
+            word_eq(w, "char") || word_eq(w, "float") || word_eq(w, "double") || word_eq(w, "bool") ||
+            word_eq(w, "auto") ||
+            word_eq(w, "package") || word_eq(w, "import") || word_eq(w, "func") || word_eq(w, "var") ||
+            word_eq(w, "type");
     }
     if lang == 2 {
-        return w == "def" || w == "if" || w == "elif" || w == "else" || w == "for" ||
-            w == "while" || w == "return" || w == "import" || w == "from" || w == "class" ||
-            w == "None" || w == "True" || w == "False" || w == "lambda" || w == "in" ||
-            w == "not" || w == "and" || w == "or" || w == "then" || w == "fi" ||
-            w == "done" || w == "case" || w == "esac" || w == "echo" || w == "export" ||
-            w == "local" || w == "function";
+        return word_eq(w, "def") || word_eq(w, "if") || word_eq(w, "elif") || word_eq(w, "else") ||
+            word_eq(w, "for") ||
+            word_eq(w, "while") || word_eq(w, "return") || word_eq(w, "import") || word_eq(w, "from") ||
+            word_eq(w, "class") ||
+            word_eq(w, "None") || word_eq(w, "True") || word_eq(w, "False") || word_eq(w, "lambda") ||
+            word_eq(w, "in") ||
+            word_eq(w, "not") || word_eq(w, "and") || word_eq(w, "or") || word_eq(w, "then") ||
+            word_eq(w, "fi") ||
+            word_eq(w, "done") || word_eq(w, "case") || word_eq(w, "esac") || word_eq(w, "echo") ||
+            word_eq(w, "export") ||
+            word_eq(w, "local") || word_eq(w, "function");
     }
     if lang == 3 {
-        return w == "true" || w == "false" || w == "null";
+        return word_eq(w, "true") || word_eq(w, "false") || word_eq(w, "null");
     }
     false
 }
 
-pub fn md_styles(cs: Vec<char>, mut st: Vec<usize>) -> Vec<usize> {
+pub fn md_styles(cs: &[char], st: &mut [usize]) {
     let n = cs.len();
     let mut i = 0;
     while i < n {
@@ -128,7 +149,7 @@ pub fn md_styles(cs: Vec<char>, mut st: Vec<usize>) -> Vec<usize> {
             i += 1;
         }
         if i >= n {
-            return st;
+            return;
         }
         if cs[i] == '#' {
             while i < n && cs[i] != '\n' {
@@ -159,11 +180,40 @@ pub fn md_styles(cs: Vec<char>, mut st: Vec<usize>) -> Vec<usize> {
         }
         i += 1;
     }
-    st
 }
 
-pub fn styles(text: String, lang: usize) -> Vec<usize> {
-    let cs = hchars_of(text);
+// H-2 (Design Doc B): in the c-family (lang 1), a tick opens a string only
+// when (a) its closing tick is on the SAME line, (b) at least 1 char sits
+// between (j >= i+2), and (c) the content looks string-like (no space,
+// '<', '(', ';', '&'). Lifetimes like 'de or &'de fail (a) or (c) and stay
+// unstyled; char literals like 'a' get string style (accepted).
+fn lang1_tick_opens_string(cs: &[char], i: usize) -> bool {
+    let n = cs.len();
+    let mut j = i + 1;
+    while j < n && cs[j] != '\'' && cs[j] != '\n' {
+        if cs[j] == '\\' {
+            j += 1; // skip the escaped char (e.g. '\'')
+        }
+        j += 1;
+    }
+    if j >= n || cs[j] != '\'' {
+        return false; // (a) no closing tick on this line
+    }
+    if j < i + 2 {
+        return false; // (b) empty '' is not a string body
+    }
+    let mut k = i + 1;
+    while k < j {
+        let d = cs[k];
+        if d == ' ' || d == '<' || d == '(' || d == ';' || d == '&' {
+            return false; // (c) not string-like
+        }
+        k += 1;
+    }
+    true
+}
+
+pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
     let n = cs.len();
     let mut st: Vec<usize> = vec![];
     let mut i = 0;
@@ -175,12 +225,13 @@ pub fn styles(text: String, lang: usize) -> Vec<usize> {
         return st;
     }
     if lang == 4 {
-        return md_styles(cs, st);
+        md_styles(cs, &mut st);
+        return st;
     }
     i = 0;
     while i < n {
         let c = cs[i];
-        let is_line_comment = (lang == 1 && heq_at(cs.clone(), i, "//".to_string())) || (lang == 2 && c == '#');
+        let is_line_comment = (lang == 1 && heq_at(cs, i, "//")) || (lang == 2 && c == '#');
         if is_line_comment {
             let mut j = i;
             while j < n && cs[j] != '\n' {
@@ -190,13 +241,13 @@ pub fn styles(text: String, lang: usize) -> Vec<usize> {
             i = j;
             continue;
         }
-        if (lang == 1 && heq_at(cs.clone(), i, "/*".to_string())) || (lang == 5 && heq_at(cs.clone(), i, "<!--".to_string())) {
-            let close = if lang == 5 { "-->".to_string() } else { "*/".to_string() };
-            let cl = hchars_of(close.clone());
-            let mut j = i + cl.len();
+        if (lang == 1 && heq_at(cs, i, "/*")) || (lang == 5 && heq_at(cs, i, "<!--")) {
+            let close: &str = if lang == 5 { "-->" } else { "*/" };
+            let clen = close.chars().count();
+            let mut j = i + clen;
             while j < n {
-                if heq_at(cs.clone(), j, close.clone()) {
-                    j += cl.len();
+                if heq_at(cs, j, close) {
+                    j += clen;
                     break;
                 }
                 j += 1;
@@ -209,10 +260,10 @@ pub fn styles(text: String, lang: usize) -> Vec<usize> {
             i = j;
             continue;
         }
-        if lang == 2 && (heq_at(cs.clone(), i, "\"\"\"".to_string()) || heq_at(cs.clone(), i, "'''".to_string())) {
-            let open = if cs[i] == '"' { "\"\"\"".to_string() } else { "'''".to_string() };
+        if lang == 2 && (heq_at(cs, i, "\"\"\"") || heq_at(cs, i, "'''")) {
+            let open: &str = if cs[i] == '"' { "\"\"\"" } else { "'''" };
             let mut j = i + 3;
-            while j < n && !heq_at(cs.clone(), j, open.clone()) {
+            while j < n && !heq_at(cs, j, open) {
                 j += 1;
             }
             if j < n {
@@ -226,7 +277,10 @@ pub fn styles(text: String, lang: usize) -> Vec<usize> {
             i = j;
             continue;
         }
-        let strq = c == '"' || (lang != 3 && c == '\'') || (lang == 1 && c == '`');
+        let mut strq = c == '"' || (lang != 3 && c == '\'') || (lang == 1 && c == '`');
+        if strq && lang == 1 && c == '\'' && !lang1_tick_opens_string(cs, i) {
+            strq = false; // lifetime tick: fall through unstyled
+        }
         if strq {
             let mut j = i + 1;
             while j < n && cs[j] != c {
@@ -289,13 +343,7 @@ pub fn styles(text: String, lang: usize) -> Vec<usize> {
             while j < n && hwordc(cs[j]) {
                 j += 1;
             }
-            let mut w: Vec<char> = vec![];
-            let mut k = i;
-            while k < j {
-                w.push(cs[k]);
-                k += 1;
-            }
-            if kw(lang, w.iter().collect::<String>()) {
+            if kw(lang, &cs[i..j]) {
                 let mut m = i;
                 while m < j {
                     st[m] = 1;
@@ -308,4 +356,62 @@ pub fn styles(text: String, lang: usize) -> Vec<usize> {
         i += 1;
     }
     st
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn detect_extensions() {
+        // H-3: extension matching is case-insensitive.
+        assert!(detect("FILE.RS") == 1);
+        assert!(detect("a.b.rs") == 1);
+        assert!(detect("x.md") == 4);
+        assert!(detect("*demo*") == 0);
+        assert!(detect("/tmp/x.PY") == 2);
+        assert!(detect("a.JSON") == 3);
+        assert!(detect("z.HTML") == 5);
+        assert!(detect("plain") == 0);
+    }
+    #[test]
+    fn rust_lifetimes_not_strings() {
+        // H-2 pinned fixture: no tick in a lifetime pair becomes string style.
+        let src = "fn f<'de>(x: &'de str) {}";
+        let cs = hchars_of(src);
+        let st = styles(&cs, 1);
+        assert!(st.len() == cs.len());
+        for k in 0..cs.len() {
+            if cs[k] == '\'' {
+                assert!(st[k] != 2); // 'de>(x: & fails (c), 'de str) {} fails (a)
+            }
+        }
+        assert!(st[0] == 1); // fn is a keyword
+    }
+    #[test]
+    fn rust_strings_and_char_literal() {
+        let cs = hchars_of("let s = \"hi\"; let c = 'a';");
+        let st = styles(&cs, 1);
+        let dq = cs.iter().position(|c| *c == '"').unwrap();
+        assert!(st[dq] == 2); // "hi" string
+        let sq = cs.iter().position(|c| *c == '\'').unwrap();
+        assert!(st[sq] == 2); // 'a' char literal: styled as string (accepted)
+        assert!(st[0] == 1); // let keyword
+    }
+    #[test]
+    fn json_single_quote_untouched() {
+        let cs = hchars_of("{'a': 1}");
+        let st = styles(&cs, 3);
+        for k in 0..cs.len() {
+            if cs[k] == '\'' {
+                assert!(st[k] == 0);
+            }
+        }
+    }
+    #[test]
+    fn md_heading_and_marker() {
+        let cs = hchars_of("# Title\n- item");
+        let st = styles(&cs, 4);
+        assert!(st[0] == 5);
+        assert!(st[8] == 5); // the '-' marker of "- item"
+    }
 }
