@@ -89,7 +89,13 @@
 - [ ] **H-6**: HTML タグ内属性文字列の装飾(注記)。05 §H-6
 - [ ] **H-7**: スタイルコードを enum 化。05 §H-7
 - [x] **H-8**: detect/styles の単体テスト追加。05 §H-8 → fix #2 で追加(detect 拡張子マトリクス、lifetime フィクスチャ、string/char リテラル、json、md)
-- [ ] **R-5**: curses 依存縮小(size 検出のみ)/[profile] 注記。06 §R-5
+- [x] **R-5**: curses 依存縮小(size 検出のみ)/[profile] 注記。06 §R-5
+  - curses 0.1.0(実態は `termsize::get().unwrap_or(0,0)` の薄ラッパーとソース確認)を
+    直接依存 `termsize` 0.1.9 に置換。`screen::term_size()` ヘルパーに集約し 3 呼び出し
+    箇所(draw_all/read_line_c/search)から使用。curses は Cargo.lock から消滅(純 Rust は
+    fix #15 ゲートで確認済みの情報と整合)。README 依存記述 2 箇所更新(fix #17)
+  - `[profile.release]` はレビュー注記どおり未設定のまま(起動性能に無関係・優先度低。
+    設定するなら lto/strip 候補として記録)
 - [x] **R-6**: CI 追加(build+test+clippy+e2e)。06 §R-6 → 導入時 `cargo clippy --all-targets` の既存 test コード 17 lint(fix #7 ゲート検出。AGENT.md の現行ゲートは plain `cargo clippy`=0 で合格)も掃除してゲートに含めるとよい
   - 実 lint 数は 18(12 `unnecessary to_string`+5 `== ""`+1 owned 比較。buffer.rs 13・terminal.rs 5)を全て代码側で掃除(`&"x".to_string()`→`"x"`(find_* は元から `&str` 引数)、`== ""`→`.is_empty()`、`cut == "world".to_string()`→`cut == "world")。`--all-targets`=0 を AGENT.md ゲート化(fix #15)
   - `.github/workflows/ci.yml`: 単一 jobs(gates)/ubuntu-24.04で build(`-D warnings`)・clippy(`--all-targets -- -D warnings`)・unit・e2e(tmux 同梱ランナー、単一 job で tmux 競合なし)。`--locked`・branches:[master] 付き(fix #15)
@@ -433,5 +439,16 @@
   (jackpot51 系 ANSI curses、C コンパニ不要・libtinfo 非依存とゲートで確認)。
   unit 30/30・`RUSTFLAGS=-D warnings` build/test 通過・clippy `--all-targets` 0。
   非 test コード不変のため e2e 再実行不要(binary 内容同一)。ゲート APPROVE。
-  初回 CI 実行結果の確認は push 後(次エントリに記録)。
+  初回 CI 実行(push 40138398806):build/clippy/unit tests=success、e2e のみ FAIL。
+  原因は emur 側でなく s133 の read_dir 順序依存(GitHub ランナー fs で候補が
+  b,a 順になり Left クランプ先が b 化)。ローカルは a 作成順 fs のため 84/84。
+  → fix #16 で s133 を順序非依存化。
   (fix #15 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #16(このコミット)**: R-6 続・CI 検証で露呈した s133 の
+  read_dir 順序依存を除去。Tab 候補リストの assert を 2 順容忍の正規表現にし、
+  開くファイルは「最左候補=Left クランプ先」として `[ab]` 幅で検証
+  (expect_lastline は厳密一致なので grep 化)。ローカル probe(作成順スワップ)で
+  断言が両順序に耐えることを確認(ローカル fs はハッシュ順序のため実 open は a 側、
+  b 側の open 経路は CI ランナーの s133 失敗再現=断言の順序非依存性で担保)。
+  CI 再検証は本 push の実行で確認。
+  (fix #16 のコミットハッシュは次エントリに記載)

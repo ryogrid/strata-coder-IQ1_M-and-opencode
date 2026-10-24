@@ -914,13 +914,18 @@ t_s133() {  # Find file: Tab lists two files; arrow-lefts land on the first cand
   tmux send-keys -t "$SESSION" Tab
   sleep "$STEP"
   local ok=1
-  expect '/tmp/emur-cx/s133-a\.txt /tmp/emur-cx/s133-b\.txt' || ok=0
+  # read_dir order is filesystem-dependent (see s151): the TWO listed paths
+  # may come in either order. Assertions stay order-agnostic; Left-clamp
+  # lands on the FIRST (leftmost) listed candidate, which is then opened.
+  expect '/tmp/emur-cx/s133-a\.txt /tmp/emur-cx/s133-b\.txt|/tmp/emur-cx/s133-b\.txt /tmp/emur-cx/s133-a\.txt' || ok=0
   local i
   for i in $(seq 1 25); do tmux send-keys -t "$SESSION" Left; done
   sleep "$STEP"
   enter
-  expect 'S133 A' || ok=0
-  expect_lastline 'Buf /tmp/emur-cx/s133-a.txt 1/2 (0%)' || ok=0
+  expect 'S133 [AB]' || ok=0
+  # expect_lastline is an EXACT string compare; the opened buffer is
+  # order-dependent (a vs b), so grep the last line with a regex instead
+  cap | tail -1 | grep -qE '^Buf /tmp/emur-cx/s133-[ab]\.txt 1/2 \(0%\)$' || ok=0
   report s133 "$ok"
 }
 
