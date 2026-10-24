@@ -96,7 +96,9 @@ Run the editor from a real terminal:
   and the search wraps at the buffer end; a char that matches nowhere
   rings the bell and is dropped; `C-s` while searching repeats the current
   query; Enter accepts the current match, `C-g` cancels and restores the
-  original point, ESC ends like Enter.
+  original point, ESC ends like Enter; arrow keys end the search like
+  Enter and then move point as plain arrows do (the whole escape
+  sequence is consumed - nothing leaks into the buffer).
 - **Backward search** — `C-r` reads the whole query in the bottom-row
   minibuffer (Enter-terminated); a miss reports
   `Search string not found: <query>` in the status line.
@@ -197,7 +199,7 @@ Run the editor from a real terminal:
 | `C-x 2` / `C-x 3` | split window below / right |
 | `C-x o` | select next window (cycles all windows) |
 | `C-x 1` | delete other windows |
-| `C-s` | incremental forward search: type the query one char at a time, each char moves point to the end of the (wrapping) match; a char that matches nowhere rings the bell and is dropped; `C-s` repeats the query, Enter accepts, Ctrl-g cancels (point restored) |
+| `C-s` | incremental forward search: type the query one char at a time, each char moves point to the end of the (wrapping) match; a char that matches nowhere rings the bell and is dropped; `C-s` repeats the query, Enter accepts, Ctrl-g cancels (point restored), arrow keys accept and move point |
 | `C-r` | backward search: whole query typed in the bottom-row minibuffer, ends with Enter |
 | `C-l` | go to line: number typed in the minibuffer, point moves to the start of that line (1-based, clamped to the last line) |
 | `Tab` (in a minibuffer prompt) | complete a file path (file prompts) or a buffer name (`C-x b`, `C-x C-b`); several matches echo the common prefix and list the candidates after the input |

@@ -240,7 +240,28 @@ fn main() {
                 let rb2 = terminal::read_byte_eof();
                 if rb2[1] == 1 { break; } // EOF: keep the current match
                 let c2 = rb2[0];
-                if c2 == 0x0D || c2 == 0x0A || c2 == 0x1b { break; } // accept
+                if c2 == 0x0D || c2 == 0x0A { break; } // accept
+                if c2 == 0x1b {
+                    // M-3: ESC accepts the search. Arrow keys arrive as
+                    // ESC [ <ABCD>; swallow the whole sequence here, else
+                    // the trailing "[B" etc. self-insert into the buffer.
+                    // The arrow then acts as a plain arrow key (Emacs
+                    // isearch: arrows accept and move).
+                    let n2 = terminal::read_byte();
+                    if n2 == 0x5b {
+                        let t = terminal::read_byte();
+                        if t == 0x41 {
+                            bufs[bi].previous_line(); // Up
+                        } else if t == 0x42 {
+                            bufs[bi].next_line(); // Down
+                        } else if t == 0x43 {
+                            bufs[bi].forward_char(); // Right
+                        } else if t == 0x44 {
+                            bufs[bi].backward_char(); // Left
+                        }
+                    }
+                    break;
+                }
                 if c2 == 0x07 { cancelled = true; break; } // Ctrl-g: cancel
                 if c2 == 0x7f { // backspace: drop the last query char
                     if qs.len() > 0 { qs.pop(); }

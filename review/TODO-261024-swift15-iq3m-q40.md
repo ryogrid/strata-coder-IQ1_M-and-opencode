@@ -6,7 +6,7 @@
 - 運用手順:
   - TODO 作成時・Design Doc 作成時・修正コミット前にサブエージェントレビューを経る
   - 1指摘(粒度が小さいものは数個)完了ごとに commit & push
-  - 各コミット前に `cargo build` `cargo test`(警告ゼロ・全通過)、挙動を変える修正では `bash test-design/e2e.sh`(68シナリオ全PASS)を確認
+  - 各コミット前に `cargo build` `cargo test`(警告ゼロ・全通過)、挙動を変える修正では `bash test-design/e2e.sh`(現在 72 シナリオ全PASS)を確認
   - 複雑な修正は `docs/design/` に Design Doc を置く(対応関係が分かるファイル名)
   - 学習した内容は末尾「学習記録」に追記する
 - Design Doc 対応: A=`docs/design/exit-eof-robustness.md`(T-1,T-2,M-1,T-3,T-4,M-2,M-4,D-1)/ B=`docs/design/perf-highlight-buffer.md`(H-1,S-1,B-1,B-2,H-2,H-3)/ C=`docs/design/cjk-display-width.md`(S-2,T-7)
@@ -18,7 +18,7 @@
 - [x] **M-2**: 終了確認(confirm_exit)中の EOF は無限ループ(実測35MB/3秒)。EOF=キャンセル(確認は終了しない)+メインループ EOF の無条件終了(§M-4 方針)で終了する旨を実装・コメント・README に明記。02 §M-2 / Design Doc A → 実装は「EOF なら直接 true(=終了)」の一歩案(Design §2.3 の理由付き採用、挙動は同一)
 - [x] **M-1**: go-to-line の u32 溢れ panic(実測 exit 101)。`parse` + バッファ行数へのクランプに置換(debug/release 挙動差=R-2 も参照)。02 §M-1 / Design Doc A → デジタルゲート+u64 parse+総行数バウンドでクランプ維持。e2e s141 追加
 - [x] **T-3**: raw mode 復元を Drop ガード+panic hook+シグナルハンドラで保証。04 §T-3 / Design Doc A → TtyGuard Drop + static AtomicPtr + SIGTERM/HUP/INT/QUIT(pty 実測: exit 143 で復元)
-- [ ] **M-3**: C-s 増分検索中の矢印キー ESC accept 後、残 `[A` が self-insert される。02 §M-3
+- [x] **M-3**: C-s 増分検索中の矢印キー ESC accept 後、残 `[A` が self-insert される。02 §M-3 → C-s ループ内で ESC 直後の `[<ABCD>` を丸ごと消費し、accept 後に矢印として移動するよう実装(Emacs isearch 相当)。e2e s143 追加(fix #3)
 - [x] **H-1**: `heq_at` の全文 clone で styles が O(n²)(451KB 1フレーム実測12.9秒)。スライス参照化。受入目標: 451KB .rs で 1フレーム < 1秒。05 §H-1 / Design Doc B → 全関数スライス化。受入ビルド=debug で 15.3s→0.122s(約10倍の余裕。fix #2)
 - [x] **S-1**: draw_all が全バッファを毎フレーム複数回走査+全面 print。text() 1回化+styles 1回化(可視行範囲 styles と差分描画は Design Doc B でスコープ判断)。03 §S-1 / Design Doc B → BufView フレームキャッシュ(text()/lines/offs/toks をバッファ毎1回、窓共有時1回)。可視範囲限定・差分描画はスコープ外と明記(fix #2)
 
@@ -146,6 +146,19 @@
   実害はなかった(償却 O(1) のループだった)が、設計準拠と証言精度の問題。
 - **octal 罠**: `printf '\021'` は octal 21=0x11(C-q)。C-y=0x19 は `\031`。
   パイプ再現テストのキーは 16 進換算を必ず確認する(C-y 検証が最初 C-q になっていた)。
+  同じ系列で e2e s143 も `\022`(C-r)で書いてしまった。**C-s=0x13=\023**。
+- **e2e アサーションの算術**: パーセンテージは point*100/buf.len()。demo バッファは
+  len=43(22+1+19+1、末尾改行で 3 行目=空)。期待値は実測から逆算せず len から
+  計算して書く(s143 で 85% と書き、実測 83% = 36*100/43 が正)。
+- **e2e.sh のヘルパは定義位置に注意**: `expect_lastline` は ~390 行目、`run_pipe` は
+  ~47 行目。スニペットを切り出して単体実行するとき「先頭 52 行+関数」では
+  expect_lastline が未定義で全 FAIL になる(製品バグと誤読した)。probe には
+  必要ヘルパを明示的に足す。
+- **M-3 の設計**: ESC は C-s ループの受理キーなので、ESC を受け取ったら**直後の
+  バイトも自分のループで読む**(未消費のまま break すると main ループが
+  `[`/`B` を printable として self-insert する)。ESC 直後が `[` でない場合は
+  1 バイトだけ飲んで accept(メインループの Meta 接頭辞読みと同じブロッキング性)。
+  受理後の移動(Up/Down/Left/Right)は Emacs の isearch が矢印で確定+移動することに倣う。
 - **clippy 実測ベースライン**: HEAD=109 → fix #2 作業ツリー=118(ゲート計測)。
   新規カテゴリ(manual_repeat_n/partialeq_to_none/unnecessary_cast/ptr_arg×2)は
   ドライブバイ修正済み(100 に減少)。R-1 の対象として計上。
@@ -177,8 +190,11 @@
   再充填は挿入地点 in-place splice(F-2)、insert_newline_after の潜行バグ F-4 をスコープ化、
   H-2 は 3 条件+フィクスチャ固定(F-5)、受け入れビルド=debug 明記(F-6)、
   メモリ/残存コスト/padding 不変条件/CJK 計測の注記追加。
-- 2026-10-24: **fix #2(このコミット)**: H-1/S-1/B-1/B-2/H-2/H-3/B-4(find 系)+B-9 部分
+- 2026-10-24: **fix #2(コミット 606a080)**: H-1/S-1/B-1/B-2/H-2/H-3/B-4(find 系)+B-9 部分
   +H-8 完了。コミット前ゲート APPROVE-WITH-CHANGES → C-y の insert_string 化漏れ(Major)を
   反映+新規 clippy カテゴリをドライブバイ修正。性能: 451KB debug 15.3s→0.122s。
-  cargo test 16/16、e2e 71/71、ビルド警告ゼロ。
-  (fix #2 のコミットハッシュは次エントリに記載)
+  cargo test 16/16、e2e 71/71、ビルド警告ゼロ。Design Doc A の clamp 記述整合を
+  docs 追記コミット(f0fd5aa)で反映。
+- 2026-10-24: **fix #3(このコミット)**: M-3(C-s 中の矢印キーで `[B` ゴミ self-insert)。
+  ESC 受理時に矢印シーケンスを消費+移動。e2e s143 追加。Phase 1 の High 全項目完了。
+  (fix #3 のコミットハッシュは次エントリに記載)
