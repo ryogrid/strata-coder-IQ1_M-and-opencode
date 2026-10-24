@@ -74,12 +74,14 @@
     通すため、**デジタルゲートを parse 前に置く**。現状の digit ループと同等の
     受理集合を保つ)。
   - `q.parse::<u64>()`(溢れは Err)。`want_ln == 0` も Invalid。
-  - **総行数を 1 回の O(n) スキャンで数え**、`want_ln > 総行数` →
-    `Invalid line number: <q>`。**大きな数はループに流入させない**(総行数が
-    既知なので位置決めは 1 スキャンでできるが、現状の `while k < want_ln`
-    1行ずつ移動の置換は M-10)。s141 はこのクランプ→Invalid を通る。
-  - 位置決めは現状の `next_line` ループを暫定維持(総行数ゲート後、ループ上限は
-    行数なので停止保証あり。M-10 で単一スキャンに統合)。
+  - **総行数を 1 回の O(n) スキャンで数え**、移動ループの上限を
+    `min(want_ln, 総行数)` にする。**大きな数は最終行へクランプ**(README/
+    design/keybindings.md/README キー表・e2e s112 が文書・実測で clamp を
+    検証済み。Emacs の goto-line も clamp。よって Invalid にしない)。
+    ループは総行数以下で停止保証あり。1行ずつ移動の単一スキャン化は M-10。
+    (レビュー Blocker#1 の「ハングする」指摘は妥当。採用した解消方法は
+    Invalid 化ではなく**ループ上限を行数に束縛**する方で、既存 clamp 仕様・
+    s112・README を保持する。)
 - self-insert UTF-8 / C-q: `read_char_eof` が `None` なら挿入しない。
 - パニックフック: `save_raw_mode` 前に `std::panic::set_hook` で
   「emur panicked — restoring terminal」+ 位置情報を stderr へ(復元本体は
@@ -116,8 +118,10 @@
   (終了コードだけでは「3 秒で 35MB 流出後に終了」する旧バグを捕まえられない)。
   新規ランナーのシナリオは e2e.sh の末尾明示ランナーリストに追加する。
   - **s140**: `printf 'x\003' | timeout 10 emur` → rc 0 + 出力 < 1MB(ハング・流出なし)。
-  - **s141**(既存 tmux ランナー): `C-l` + `999999999999999` + Enter → status に
-    `Invalid line number`、エディタ生存(panic しない)。
+  - **s141**(既存 tmux ランナー): `C-l` + `999999999999999` + Enter → status は
+    最終行にクランプ(`Buf *demo* 3/3 (100%)`)、エディタ生存・panic なし
+    (ハングなしを時間内に判定 = ステータスが status 形式であること)。
+    その後の `Z` 入力が効くことで生存を確認。
   - **s142**: `printf '\022abc' | timeout 10 emur`(Enter なし EOF)→ rc 0、
     出力に `Cancelled` を含む(EOF で C-r がキャンセルされ、ステータスメッセージ
     付きフレームが 1 枚描画されて終了する)。
