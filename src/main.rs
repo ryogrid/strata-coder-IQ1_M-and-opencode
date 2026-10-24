@@ -486,19 +486,27 @@ fn main() {
                     None => msg = format!("Invalid line number: {}", q),
                     Some(0) => msg = format!("Invalid line number: {}", q),
                     Some(want_ln) => {
-                        let mut total: u64 = 1;
+                        // M-10: ONE O(n) scan. tpos = start of line min(want_ln, total):
+                        // each '\n' seen starts line `line`; only starts up to want_ln are
+                        // recorded, so a want_ln past the end clamps to the last line (M-1).
+                        // (Old code: a total-line count scan, then beginning_of_buffer +
+                        // next_line per line = two full passes; the moves from position 0
+                        // always land at column 0 = the line start, same landing point.)
+                        let mut tpos: usize = 0; // start of line 1
+                        let mut line: u64 = 1;
                         let mut i = 0;
                         while i < bufs[bi].len() {
-                            if bufs[bi].char_at(i) == '\n' { total += 1; }
+                            if bufs[bi].char_at(i) == '\n' {
+                                line += 1;
+                                if line <= want_ln {
+                                    tpos = i + 1;
+                                } else {
+                                    break; // tpos final: want_ln line start recorded
+                                }
+                            }
                             i += 1;
                         }
-                        let target = if want_ln < total { want_ln } else { total };
-                        bufs[bi].beginning_of_buffer();
-                        let mut k: u64 = 1;
-                        while k < target {
-                            bufs[bi].next_line();
-                            k += 1;
-                        }
+                        bufs[bi].point = tpos;
                         msg = "".to_string();
                     }
                 }

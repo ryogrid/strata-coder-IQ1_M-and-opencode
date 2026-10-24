@@ -33,7 +33,7 @@
 - [x] **M-7**: 未バインドの C-x 後続が無言。default でメッセージ追加。02 §M-7 → `Undefined command: C-x <char>`。e2e s145(fix #4)。※TODO 原文の「Quit 相当」は採用せず(終了は事故リスク、 Emacs の "Undefined" 相当のメッセージ採用)
 - [x] **M-8**: C-x C-w が書き出し失敗後も filename を設定。成功時のみ設定。02 §M-8 → 成功時のみバインド(失敗時 C-x C-s は "No file name" 経路)。e2e s146(fix #4)
 - [x] **M-9**: read_file が全エラーを無言(空表示)。開けない時のステータスメッセージ。02 §M-9 → `Result<String,String>` 化で argv/C-x C-f/C-x C-i が `Failed to open <path>: <errno>` を表示。argv 失敗時 filename 未バインド(C-x C-s が元ファイルを上書きしない)。e2e s147(fix #4)
-- [ ] **M-10**: C-l が next_line を行数回繰り返す O(n×行長)。1回スキャンへ。02 §M-10
+- [x] **M-10**: C-l が next_line を行数回繰り返す O(n×行長)。1回スキャンへ。02 §M-10 → 単一 O(n) スキャン(行数計数とライン頭計算を一体化、want が総行数超なら最終行にクランプ=M-1 維持)。C-l 実測 3/6・9→6/6・1/6、e2e s112/s141 2/2(fix #10)
 - [x] **S-2**: 全角(CJK)を幅1として扱う。セル数基準化。03 §S-2 / Design Doc C → `char_width`(screen.rs、幅表の単一源)を導入し、`draw_cell` の打切り/パディングと `point_pos`(=カーソル列)をセル基準化。e2e s149/s150(fix #8)
 - [ ] **S-3**: split/collapse で tree のスロットが単調増加(未回收)。03 §S-3
 - [x] **T-4**: read(2) エラーを EOF と同一視。Err では再試行ループとし Ok(0) をもって EOF とする(std が EINTR を再試行する事実を確認したらコメントで明文化)。04 §T-4 / Design Doc A → 再試行ループ実装。実測: std の StdinLock::read は EINTR を自動再試行しない(Err(Interrupted) を返す)ため explicit ループが本体。コメント明記済み(fix #1)
@@ -350,5 +350,18 @@
   e2e s153: C-x 2→C-e→C-x o→C-x k→C-x o→x。新ビルド 2/2 PASS、HEAD worktree
   ビルドで同一手順 2/2 FAIL(panic、分離成立)。アサートはステータス形式
   `<msg> <line>/<total> (<pct>%)` の完全一致(`Killed buffer <path> 1/1 (0%)`)。
-  全ゲート(clippy 0/test 22/22/フル e2e 82)は次段記載。
+  ゲート APPROVE(Blocker/Major なし。旧ビルドの FAIL は `^x$` 側=insert 時の
+  panic と判明。split 後 active は元 leaf のため stale は非 active 側=全 leaf
+  リセットが効く経路)。フル e2e 82/82・release 6/6・clippy 0・test 22/22。
   (fix #9 のコミットハッシュは次エントリに記載)
+- 2026-10-24: **fix #10(このコミット)**: M-10(C-l の go-to-line 2 パス走査→1 回)。
+  行数計数スキャン+先頭からの next_line 反復を、改行数を数えながら `want_ln` 行目の
+  行頭を記録する単一スキャンに統合(want が超えたら最終行頭を記録した位置にクランプ、
+  M-1 のセマンティクス不変)。到達点は旧実装と同一(先頭 0・列 0 で進む next_line の
+  着地=行頭)。ゲート APPROVE(HEAD worktree との A/B 差分テストで旧新バイト一致:
+  want=1/正常/want==総数/超過/末尾改行/末尾なし/empty/マルチバイト)。ゲート提案の
+  `break`(want_ln 到達で走査打ち切り、C-l 1 が巨大ファイルで O(初行))を適用後、
+  全ゲート再実行。検証: pty で C-l 3→3/6、9→6/6(100%)、1→1/6、6→6/6、5→5/6、
+  e2e s112/s141 単体 2/2、clippy 0・test 22/22。break 適用後のフル e2e 82/82 solo
+  (/tmp/e2e_run17.out)+release スモーク 6/6(/tmp/rs6.out)。
+  (fix #10 のコミットハッシュは次エントリに記載)
