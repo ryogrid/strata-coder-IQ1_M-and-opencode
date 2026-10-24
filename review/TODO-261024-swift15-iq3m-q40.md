@@ -28,11 +28,11 @@
 - [x] **B-2**: find_forward/backward が毎回全文 text() 生成。char_at 直接スキャンへ。01 §B-2 / Design Doc B → Option<usize> 戻り値で直接スキャン(fix #2)
 - [ ] **B-3**: kill_to_end_of_line が mark 後方(同一行)で無音 no-op。後方 mark は領域なし扱いへ。01 §B-3
 - [x] **M-4**: メインループ EOF が未保存バッファを無警告破棄。方針決定(EOF=終了据え置き+dirty 時のメッセージ/文書化)。02 §M-4 / Design Doc A → 方針確定・README/keybindings に明記(fix #1)。確認プロンプトは付けない(stdin 閉鎖後は確認不能が本質)
-- [ ] **M-5**: C-x k が modified バッファを無確認で空にする。確認プロンプト追加。02 §M-5
+- [x] **M-5**: C-x k が modified バッファを無確認で空にする。確認プロンプト追加。02 §M-5 → `Kill buffer <name>? (yes|no)`(yes/y のみ実行、EOF=キャンセル=MAIN EOF 終了は M-4 仕様)。e2e s144(fix #4)
 - [ ] **M-6**: C-x C-f が同一ファイルを毎回新規バッファ化。既存バッファ再利用。02 §M-6
-- [ ] **M-7**: 未バインドの C-x 後続が無言。default で "Quit" 相当。02 §M-7
-- [ ] **M-8**: C-x C-w が書き出し失敗後も filename を設定。成功時のみ設定。02 §M-8
-- [ ] **M-9**: read_file が全エラーを無言(空表示)。開けない時のステータスメッセージ。02 §M-9
+- [x] **M-7**: 未バインドの C-x 後続が無言。default でメッセージ追加。02 §M-7 → `Undefined command: C-x <char>`。e2e s145(fix #4)。※TODO 原文の「Quit 相当」は採用せず(終了は事故リスク、 Emacs の "Undefined" 相当のメッセージ採用)
+- [x] **M-8**: C-x C-w が書き出し失敗後も filename を設定。成功時のみ設定。02 §M-8 → 成功時のみバインド(失敗時 C-x C-s は "No file name" 経路)。e2e s146(fix #4)
+- [x] **M-9**: read_file が全エラーを無言(空表示)。開けない時のステータスメッセージ。02 §M-9 → `Result<String,String>` 化で argv/C-x C-f/C-x C-i が `Failed to open <path>: <errno>` を表示。argv 失敗時 filename 未バインド(C-x C-s が元ファイルを上書きしない)。e2e s147(fix #4)
 - [ ] **M-10**: C-l が next_line を行数回繰り返す O(n×行長)。1回スキャンへ。02 §M-10
 - [ ] **S-2**: 全角(CJK)を幅1として扱う。セル数基準化。03 §S-2 / Design Doc C
 - [ ] **S-3**: split/collapse で tree のスロットが単調増加(未回收)。03 §S-3
@@ -84,7 +84,7 @@
 - [ ] **R-6**: CI 追加(build+test+clippy+e2e)。06 §R-6
 - [ ] **D-6**: keybindings.md の C-d 二重掲載・C-\ 凡例削除。07 §D-6
 - [ ] **D-8**: C-s/C-r/C-l minibuffer は補完なしの明記。07 §D-8
-- [ ] **D-9**: README:79 に「全読み込みエラーで空で開く」注記(M-9 と同時)。07 §D-9
+- [x] **D-9**: README:79 に「全読み込みエラーで空で開く」注記(M-9 と同時)。07 §D-9 → M-9 と同時に新挙動(Failed to open 表示・filename 未バインド)を README へ記述(fix #4)
 
 ## 確認済み良好点(対応不要・記録)
 
@@ -159,6 +159,31 @@
   `[`/`B` を printable として self-insert する)。ESC 直後が `[` でない場合は
   1 バイトだけ飲んで accept(メインループの Meta 接頭辞読みと同じブロッキング性)。
   受理後の移動(Up/Down/Left/Right)は Emacs の isearch が矢印で確定+移動することに倣う。
+- **ステータス行の msg 慣習**: msg はコマンドが明示的に `""` を代入するまで**残り続ける**
+  (self-insert やカーソル移動では消えない)。e2e のアサートはこれを前提に書く
+  (s145: 'Z' 後も "Undefined command: C-x Q 1/3 (2%)" が正しい期待値)。
+  消すコマンド(C-x 1 等)を使ってからのアサートが堅い。
+- **ステータス行は幅 cols(80)でクリップ**: 長い msg(Failed to open + errno + 位置)は
+  80 桁で切れ、残りは折返し行になる。長い期待値は `expect_lastline`(完全一致)でなく
+  `expect`(grep 系)を使う(s147)。
+- **C-x C-s は filename が書き込み先**: C-x C-w 失敗時に filename をバインドすると
+  後続の C-x C-s が**書けないパスを保存先化**して上書き試行の連鎖になる。
+  「書き込み成功時のみバインド」が本質(M-8)。失敗後は "No file name for this buffer"
+  経路に乗る(s146 がこれを断言)。
+- **read_file の失敗秘匿はデータ喪失経路を伴う**: 失敗時に filename を付けて空で開くと
+  C-x C-s が**元ファイルを上書き**しうる。argv 起動の読み込み失敗時は
+  filename なしの空バッファ+Failed to open 表示(fix #4)。
+- **dispatch 連鎖の終端 else は前置 if を巻き込む**: C-x ハンドラは
+  `if n == 0x03 {...}`(独立 if)→ `if n == 0x31 {...} else if ...` の鎖、という
+  構造だった。M-7 で鎖の終端に `else { Undefined }` を足すと、**独立 if の
+  C-x C-c が鎖に落ち**、キャンセル時の "Cancelled" が "Undefined command" で
+  上書きされた(e2e s111 が検出、ゲートレビューが REJECT で特定)。
+  教訓: **既存ディスパッチに else 節を足すときは、鎖の先頭を独立 if にせず
+  `else if` で連結して全分岐を単一チェーンにする**+既存の Cancelled 系 e2e
+  (s111/s15/s142)を必ず回す。
+- **e2e 期待値はコードから逆算せず実測併用**: msg サフィックス付きステータス
+  (`<label> <line>/<total> (<pct>%)`)の完全一致は、ラベルが msg 継承・クリップで
+  読み違えやすい。まず tmux で実測してから expect_lastline を書く(s145/s146 で実施)。
 - **clippy 実測ベースライン**: HEAD=109 → fix #2 作業ツリー=118(ゲート計測)。
   新規カテゴリ(manual_repeat_n/partialeq_to_none/unnecessary_cast/ptr_arg×2)は
   ドライブバイ修正済み(100 に減少)。R-1 の対象として計上。
@@ -195,6 +220,10 @@
   反映+新規 clippy カテゴリをドライブバイ修正。性能: 451KB debug 15.3s→0.122s。
   cargo test 16/16、e2e 71/71、ビルド警告ゼロ。Design Doc A の clamp 記述整合を
   docs 追記コミット(f0fd5aa)で反映。
-- 2026-10-24: **fix #3(このコミット)**: M-3(C-s 中の矢印キーで `[B` ゴミ self-insert)。
+- 2026-10-24: **fix #3(コミット ec5887e)**: M-3(C-s 中の矢印キーで `[B` ゴミ self-insert)。
   ESC 受理時に矢印シーケンスを消費+移動。e2e s143 追加。Phase 1 の High 全項目完了。
-  (fix #3 のコミットハッシュは次エントリに記載)
+- 2026-10-24: **fix #4(このコミット)**: M-5/M-7/M-8/M-9(main.rs UX 群)+D-9README 注記。
+  read_file→Result 化・C-x k 確認・Undefined command・C-x C-w 成功時のみ filename・
+  Failed to open 表示。e2e s144〜s147 追加。コミットメッセージの TODO 原文「Quit 相当」は
+  メッセージ表示に方針変更(理由を TODO に記録)。
+  (fix #4 のコミットハッシュは次エントリに記載)

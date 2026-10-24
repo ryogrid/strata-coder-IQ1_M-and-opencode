@@ -52,9 +52,9 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x, `C-\` = Ctrl-backslash.
 | `C-x b` | `switch-to-buffer` (name in echo/minibuffer line; Tab completes buffer names; creates empty buffer if new) |
 | `C-x C-b` | `buffer-list-select` (lists buffer names in the minibuffer; Tab completes them; type a name, or Enter cycles to the next buffer) |
 | `C-x C-s` | `save` (write current buffer) |
-| `C-x C-w` | `write-file` (save as) |
+| `C-x C-w` | `write-file` (save as; binds the filename only on success) |
 | `C-x C-i` | `insert-file` (insert file at point) |
-| `C-x k` | `kill-buffer` |
+| `C-x k` | `kill-buffer` (asks `Kill buffer <name>? (yes|no)` when modified) |
 
 ## Windows
 

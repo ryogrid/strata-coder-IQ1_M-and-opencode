@@ -4,10 +4,12 @@ mod screen;
 mod window;
 mod highlight;
 
-fn read_file(path: String) -> String {
+// Returns the file contents, or Err(reason) when the file cannot be read
+// (M-9: callers must report this - loading silently as empty lost errors).
+fn read_file(path: String) -> Result<String, String> {
     match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(_) => "".to_string(),
+        Ok(s) => Ok(s),
+        Err(e) => Err(format!("{}", e)),
     }
 }
 
@@ -60,16 +62,25 @@ fn main() {
     let _guard = terminal::save_raw_mode(); // bound by name: Drop at end of main
     terminal::install_restore_signals();
     let args: Vec<String> = std::env::args().collect();
+    let mut msg = "".to_string();
     let mut bufs = vec![buffer::Buffer::new("*demo*".to_string(), "This is the first line\nof the demo buffer.\n".to_string())];
     if args.len() > 1 {
         let path = args[1].to_string();
-        let text = read_file(path.to_string());
-        bufs[0] = buffer::Buffer::new(path.to_string(), text);
-        bufs[0].filename = Some(path.to_string());
+        match read_file(path.to_string()) {
+            Ok(text) => {
+                bufs[0] = buffer::Buffer::new(path.to_string(), text);
+                bufs[0].filename = Some(path.to_string());
+            }
+            Err(e) => {
+                // M-9: report the error; the buffer stays EMPTY with NO
+                // filename, so C-x C-s cannot clobber the unreadable file.
+                bufs[0] = buffer::Buffer::new(path.to_string(), "".to_string());
+                msg = format!("Failed to open {}: {}", path, e);
+            }
+        }
     }
     let mut tree = window::new_tree(0);
     let mut active = 0;
-    let mut msg = "".to_string();
     let mut killed = "".to_string();
     let mut prev_cmd = 0;
     loop {
@@ -96,8 +107,7 @@ fn main() {
                     break;
                 }
                 msg = "Cancelled".to_string();
-            }
-            if n == 0x31 { // Ctrl-x 1: delete-other-windows
+            } else if n == 0x31 { // Ctrl-x 1: delete-other-windows
                 tree.collapse(active);
                 msg = "".to_string();
             } else if n == 0x32 { // Ctrl-x 2: split-window-below
@@ -127,26 +137,35 @@ fn main() {
             } else if n == 0x06 { // Ctrl-x Ctrl-f: open file; in a lone window split below, in a split tree load into the active window
                 let path = terminal::read_line_files("Find file: ".to_string());
                 if path.len() > 0 {
-                    let nb = bufs.len();
-                    bufs.push(buffer::Buffer::new(path.to_string(), read_file(path.to_string())));
-                    bufs[nb].filename = Some(path.clone());
-                    bufs[nb].modified = false;
-                    if tree.leaves.len() == 1 {
-                        tree.split(active, true);
-                        let copy_idx = tree.leaves.len() - 1;
-                        tree.leaves[copy_idx].buffer = nb;
-                        tree.leaves[copy_idx].point = 0;
-                        tree.leaves[copy_idx].mark = 0;
-                        tree.leaves[copy_idx].scroll = 0;
-                        active = copy_idx;
-                    } else {
-                        tree.leaves[active].buffer = nb;
-                        tree.leaves[active].point = 0;
-                        tree.leaves[active].mark = 0;
-                        tree.leaves[active].scroll = 0;
+                    match read_file(path.to_string()) {
+                        Err(e) => {
+                            // M-9: an unreadable file does NOT become an empty
+                            // loaded buffer; report it, keep the current window.
+                            msg = format!("Failed to open {}: {}", path, e);
+                        }
+                        Ok(text) => {
+                            let nb = bufs.len();
+                            bufs.push(buffer::Buffer::new(path.to_string(), text));
+                            bufs[nb].filename = Some(path.clone());
+                            bufs[nb].modified = false;
+                            if tree.leaves.len() == 1 {
+                                tree.split(active, true);
+                                let copy_idx = tree.leaves.len() - 1;
+                                tree.leaves[copy_idx].buffer = nb;
+                                tree.leaves[copy_idx].point = 0;
+                                tree.leaves[copy_idx].mark = 0;
+                                tree.leaves[copy_idx].scroll = 0;
+                                active = copy_idx;
+                            } else {
+                                tree.leaves[active].buffer = nb;
+                                tree.leaves[active].point = 0;
+                                tree.leaves[active].mark = 0;
+                                tree.leaves[active].scroll = 0;
+                            }
+                            moved = true;
+                            msg = "".to_string();
+                        }
                     }
-                    moved = true;
-                    msg = "".to_string();
                 }
             } else if n == 0x13 { // Ctrl-x Ctrl-s: save
                 let path = bufs[bi].filename.clone().map(|p| p.to_string()).unwrap_or("".to_string());
@@ -163,8 +182,10 @@ fn main() {
             } else if n == 0x17 { // Ctrl-x Ctrl-w: write-file
                 let path = terminal::read_line_files("Write file: ".to_string());
                 if path.len() > 0 {
-                    bufs[bi].filename = Some(path.clone());
+                    // M-8: the filename binds ONLY on success; a failed
+                    // write leaves save-target (and C-x C-s) untouched.
                     if write_file(path.to_string(), bufs[bi].text()) {
+                        bufs[bi].filename = Some(path.clone());
                         bufs[bi].modified = false;
                         msg = format!("Wrote {}", path);
                     } else {
@@ -174,15 +195,36 @@ fn main() {
             } else if n == 0x09 { // Ctrl-x Ctrl-i: insert-file
                 let path = terminal::read_line_files("Insert file: ".to_string());
                 if path.len() > 0 {
-                    bufs[bi].insert_string(&read_file(path.to_string()));
-                    msg = format!("Inserted file {}", path);
+                    match read_file(path.to_string()) {
+                        Ok(text) => {
+                            bufs[bi].insert_string(&text);
+                            msg = format!("Inserted file {}", path);
+                        }
+                        Err(e) => {
+                            // M-9: report the failure; insert nothing
+                            msg = format!("Failed to open {}: {}", path, e);
+                        }
+                    }
                 }
-            } else if n == 0x6b { // Ctrl-x k: kill-buffer
+            } else if n == 0x6b { // Ctrl-x k: kill-buffer (asks first when modified, M-5)
                 let name = bufs[bi].name.clone();
-                bufs[bi] = buffer::Buffer::new(name.to_string(), "".to_string());
-                bufs[bi].filename = None;
-                bufs[bi].modified = false;
-                msg = format!("Killed buffer {}", name);
+                let proceed = if !bufs[bi].modified {
+                    true
+                } else {
+                    // EOF (stdin closed) reads as "" = Cancelled; the main
+                    // loop's own EOF read then exits (M-4 policy: unconfirmed
+                    // exit loses data, which is documented).
+                    let sel = terminal::read_line(format!("Kill buffer {}? (yes|no) ", name));
+                    sel == "yes".to_string() || sel == "y".to_string()
+                };
+                if !proceed {
+                    msg = "Cancelled".to_string();
+                } else {
+                    bufs[bi] = buffer::Buffer::new(name.to_string(), "".to_string());
+                    bufs[bi].filename = None;
+                    bufs[bi].modified = false;
+                    msg = format!("Killed buffer {}", name);
+                }
             } else if n == 0x62 || n == 0x02 { // Ctrl-x b / Ctrl-x Ctrl-b: switch-to-buffer & buffer list select
                 let mut names = "".to_string();
                 let mut bnames: Vec<String> = vec![];
@@ -220,6 +262,10 @@ fn main() {
                     moved = true;
                     msg = "".to_string();
                 }
+            } else {
+                // M-7: an unbound C-x sequence reports itself explicitly
+                // (was silent: the previous status line just stayed).
+                msg = format!("Undefined command: C-x {}", n as char);
             }
         } else if b == 0x13 { // Ctrl-s: incremental forward search
             // Type the query one char at a time; each char extends the search

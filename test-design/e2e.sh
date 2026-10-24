@@ -964,7 +964,62 @@ t_s143() {  # arrow keys during C-s: accept the search AND move, no "[B" junk (M
   report s143 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143; do
+t_s144() {  # C-x k asks before killing a modified buffer (M-5); yes kills
+  start_session s144
+  sendb 'Z'
+  sendb $'\030k'
+  local ok=1
+  expect_lastline 'Kill buffer *demo*? (yes|no)' || ok=0
+  sendb 'no'
+  enter
+  expect_lastline 'Cancelled 1/3 (2%)' || ok=0
+  sendb $'\030k'
+  sendb 'yes'
+  enter
+  expect_lastline 'Killed buffer *demo* 1/1 (0%)' || ok=0
+  report s144 "$ok"
+}
+
+t_s145() {  # unbound C-x sequence reports "Undefined command" (M-7)
+  start_session s145
+  sendb $'\030' 'Q'
+  local ok=1
+  expect_lastline 'Undefined command: C-x Q 1/3 (0%)' || ok=0
+  sendb 'Z'
+  # msg persists until a command sets it (existing convention)
+  expect_lastline 'Undefined command: C-x Q 1/3 (2%)' || ok=0
+  sendb $'\030\061'
+  expect_lastline 'Buf *demo* * 1/3 (2%)' || ok=0
+  report s145 "$ok"
+}
+
+t_s146() {  # C-x C-w failure leaves the filename unbound (M-8)
+  start_session s146
+  sendb 'Z'
+  sendb $'\030\027' '/proc/nope/x.txt'
+  enter
+  local ok=1
+  expect_lastline 'Failed to write /proc/nope/x.txt 1/3 (2%)' || ok=0
+  sendb $'\030\023'
+  expect_lastline 'No file name for this buffer 1/3 (2%)' || ok=0
+  report s146 "$ok"
+}
+
+t_s147() {  # read failures report "Failed to open ..." (M-9); window survives.
+  # The status row clips at 80 cols, so use greps, not exact lastline.
+  start_session s147
+  sendb $'\030\006' '/nonexistent-emur/x.txt'
+  enter
+  local ok=1
+  expect 'Failed to open /nonexistent-emur/x\.txt: No such file' || ok=0
+  expect 'This is the first line' || ok=0
+  sendb $'\030\011' '/nonexistent-emur/y.txt'
+  enter
+  expect 'Failed to open /nonexistent-emur/y\.txt: No such file' || ok=0
+  report s147 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147; do
   "$t"
 done
 

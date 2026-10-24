@@ -75,8 +75,12 @@ Run the editor from a real terminal:
   UTF-8 character indexes; each buffer keeps a point, a mark, a modified
   flag and a filename. With no arguments a buffer named `*demo*` is seeded
   with two sample lines; a file-path argument loads that file (buffer name
-  = path, filename set so `C-x C-s` saves to it, buffer unmodified,
-  missing files open empty).
+  = path, filename set so `C-x C-s` saves to it, buffer unmodified). If a
+  file cannot be read (missing, unreadable), `C-x C-f`/`C-x C-i`/startup
+  report `Failed to open <path>: <reason>` in the status area: `C-x C-f`
+  keeps the current window, `C-x C-i` inserts nothing, and startup opens an
+  empty buffer with NO filename binding (so `C-x C-s` cannot clobber the
+  unreadable file).
 - **Insertion and editing** — printable chars self-insert (UTF-8 included);
   `C-j`/`C-m` insert a newline at point; `C-o` inserts a newline after
   point; `C-t` transposes the chars around point; `C-q` inserts the next
@@ -116,10 +120,12 @@ Run the editor from a real terminal:
 - **File operations** — `C-x C-f` opens a file into the active window's
   buffer (with a lone window it first splits below and shows the file there;
   buffer name = path, shown by the status line); `C-x C-s` saves the
-  buffer to its filename; `C-x C-w` writes to a named file and records it,
-  so later `C-x C-s` saves there; `C-x C-i` inserts the contents of a file
-  at point without re-buffering; `C-x k` kills the current buffer (a fresh
-  empty buffer with the same name).
+  buffer to its filename; `C-x C-w` writes to a named file and records it
+  ONLY on success (a failed write leaves the save target untouched), so
+  later `C-x C-s` saves there; `C-x C-i` inserts the contents of a file
+  at point without re-buffering; `C-x k` kills the current buffer (asks
+  `Kill buffer <name>? (yes|no)` first when it has unsaved modifications;
+  a fresh empty buffer with the same name).
 - **Buffer switching and listing** — `C-x b` switches the active window to
   a buffer named in the minibuffer (Tab completes names; a new name
   creates an empty buffer); `C-x C-b` lists all buffer names in the
@@ -193,9 +199,9 @@ Run the editor from a real terminal:
 | `C-x b` | switch-to-buffer: buffer name typed in the bottom-row minibuffer prompt (Tab completes a buffer name), Enter switches the active window to that buffer (creates an empty one if new) |
 | `C-x C-b` | list all buffer names in the bottom-row minibuffer; Tab completes among them; type a name + Enter to select and switch, Enter alone cycles to the next buffer |
 | `C-x C-s` | save buffer to its file |
-| `C-x C-w` | write buffer to a named file |
+| `C-x C-w` | write buffer to a named file (records it as the filename only if the write succeeds) |
 | `C-x C-i` | insert contents of a file at point |
-| `C-x k` | kill-buffer (start a fresh empty buffer, same name) |
+| `C-x k` | kill-buffer (asks `yes/no` first when the buffer is modified; starts a fresh empty buffer, same name) |
 | `C-x 2` / `C-x 3` | split window below / right |
 | `C-x o` | select next window (cycles all windows) |
 | `C-x 1` | delete other windows |
