@@ -155,6 +155,21 @@ These target the three failure modes reported on real WSL2 ttys.
 | s82 | C-x b `aa` Enter; C-x b `ab` Enter; C-x b `a` Tab | ambiguous completion echoes the candidate list `aa ab`; typing `b` Enter then switches: status `Buf ab 1/1 (0%)` |
 | s83 | C-x C-f `/tmp/emur-e2e-fcomp` Tab Enter | Tab completes the unique path; split window shows file content; status `Buf /tmp/emur-e2e-fcomp.txt 1/3 (0%)` |
 
+## Minibuffer Enter-on-candidate scenarios
+
+Tab lists several candidates by echoing them after the input
+(`"  cand1 cand2 ... "`). The cursor moves over the echoed line (tmux named
+keys `Left`/`Right` arrive as ANSI arrows; `C-b`/`C-f`/`C-a`/`C-e` are the
+Emacs forms) and Enter on a listed candidate selects it; Enter elsewhere
+accepts the typed input.
+
+| ID   | Setup                                          | Expected observation |
+|------|------------------------------------------------|----------------------|
+| s130 | C-x b `aa`/`ab` create; C-x C-b; Tab; Left x4; Enter | the name list is echoed after the prompt; the caret lands on `aa`; status `Buf aa 1/1 (0%)` |
+| s131 | same fixtures; C-x b `a` Tab; C-b; Enter       | caret moves one left onto the last candidate `ab`; status `Buf ab 1/1 (0%)` |
+| s132 | same fixtures; C-x b `a` Tab; Enter (no move)  | caret past the trailing space accepts the input: creates buffer `a`, status `Buf a 1/1 (0%)` |
+| s133 | C-x C-f `/tmp/emur-cx/s133-` Tab (two files listed); Left x25; Enter | caret lands on the `s133-a.txt` candidate; that file opens (`S133 A` visible), status `Buf /tmp/emur-cx/s133-a.txt 1/2 (0%)` |
+
 ## Syntax-highlighting scenarios
 
 Color assertions use `capture-pane -pe` (`cap_e`) + `expect_e`/`expect_absent_e`

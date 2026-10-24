@@ -241,25 +241,93 @@ pub fn file_candidates(input: String) -> Vec<String> {
     return cands;
 }
 
+// Echo width of a candidate list: the two separator spaces plus every
+// candidate followed by one space (the format echoed by Tab).
+pub fn list_width(list: Vec<String>) -> usize {
+    let mut w = 0;
+    if list.len() > 0 {
+        w = 2;
+        let mut j = 0;
+        while j < list.len() {
+            w += chars_of(list[j].clone()).len() + 1;
+            j += 1;
+        }
+    }
+    return w;
+}
+
+// The candidate whose echoed span covers the cursor position cur in the
+// echo area (input of inp chars, then "  cand1 cand2 ... "). Spans are
+// inclusive caret ranges: the caret right before a candidate's first char
+// and right after its last char both count as on it; the separator spaces
+// between candidates are not on any candidate. "" when on none.
+pub fn cand_at(list: Vec<String>, inp: usize, cur: usize) -> String {
+    let mut s = inp + 2;
+    let mut j = 0;
+    while j < list.len() {
+        let l = chars_of(list[j].clone()).len();
+        if cur >= s && cur <= s + l {
+            return list[j].clone();
+        }
+        s += l + 1;
+        j += 1;
+    }
+    return "".to_string();
+}
+
+// Park the real terminal cursor at echo-column cur of the minibuffer row
+// (prompt width plen chars, 1-based screen row row).
+fn echo_goto(row: usize, plen: usize, cur: usize) {
+    print!("\x1b[{};{}H", row, plen + cur + 1);
+}
+
+// Erase from echo-column cur to the end of the row, then echo the input
+// tail out[cur..]; leaves the real cursor after the printed tail.
+fn echo_tail(row: usize, plen: usize, cur: usize, out: &[char]) {
+    print!("\x1b[{};{}H\x1b[K", row, plen + cur + 1);
+    let mut k = cur;
+    while k < out.len() {
+        print!("{}", out[k]);
+        k += 1;
+    }
+}
+
 // Read a line in raw mode with local echo on the bottom (status) row, with
 // Tab completion against cands (or the filesystem when file_comp is set).
 // On a unique match the suffix is echoed; multiple matches echo their
-// common prefix and list the candidates. Returns the completed string.
+// common prefix and list the candidates after the input. The cursor can
+// move over the echoed line (arrows / C-b / C-f / C-a / C-e): Enter on a
+// listed candidate selects it, Enter elsewhere accepts the typed input,
+// and editing the input clears a stale candidate list. Returns the
+// completed string.
 pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> String {
     let sz = curses::canvas::get_size();
-    let row = if sz.rows > 0 { sz.rows } else { 24 };
+    let row: usize = if sz.rows > 0 { sz.rows as usize } else { 24 };
+    let plen = chars_of(prompt.clone()).len();
     print!("\x1b[{};1H\x1b[2K", row);
     print!("{}", prompt);
     flush_stdout();
-    let mut out: Vec<char> = vec![];
+    let mut out: Vec<char> = vec![];    // the typed input
+    let mut list: Vec<String> = vec![]; // candidates echoed after the input
+    let mut cur: usize = 0;             // cursor in the echo area, 0..=width
     loop {
+        let tl = out.len() + list_width(list.clone()); // echoed width
         let b = read_byte();
-        if b == 0x0D || b == 0x0A {
+        if b == 0x0D || b == 0x0A { // Enter: the candidate under the cursor wins
+            let mut ret = str_of(out.clone());
+            if list.len() > 0 {
+                let sel = cand_at(list.clone(), out.len(), cur);
+                if sel.len() > 0 {
+                    ret = sel;
+                }
+            }
+            echo_goto(row, plen, tl);
             print!("\r\n");
             flush_stdout();
-            return str_of(out);
+            return ret;
         }
-        if b == 0x07 {
+        if b == 0x07 { // Ctrl-g: cancel
+            echo_goto(row, plen, tl);
             print!(" [Cancelled]\r\n");
             flush_stdout();
             return "".to_string();
@@ -269,6 +337,11 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Strin
             let pool = if file_comp { file_candidates(inp.clone()) } else { cands.clone() };
             let hits = completions(inp.clone(), pool);
             if hits.len() == 1 {
+                cur = out.len();
+                if list.len() > 0 { // input changes: the old list echo is stale
+                    list = vec![];
+                    print!("\x1b[{};{}H\x1b[K", row, plen + cur + 1);
+                }
                 let full = chars_of(hits[0].clone());
                 let mut k = chars_of(inp.clone()).len();
                 while k < full.len() {
@@ -276,8 +349,13 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Strin
                     print!("{}", full[k]);
                     k += 1;
                 }
+                cur = out.len();
                 flush_stdout();
             } else if hits.len() > 1 {
+                cur = out.len();
+                if list.len() > 0 { // relisting: erase the old list echo
+                    print!("\x1b[{};{}H\x1b[K", row, plen + cur + 1);
+                }
                 let cp = common_prefix(hits.clone());
                 let cpc = chars_of(cp);
                 let mut k = chars_of(inp.clone()).len();
@@ -292,21 +370,87 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Strin
                     print!("{} ", hits[m]);
                     m += 1;
                 }
+                list = hits.clone();
+                cur = out.len() + list_width(list.clone());
                 flush_stdout();
             }
             continue;
         }
-        if b == 0x7f { // backspace
-            if out.len() > 0 {
-                out.pop();
-                print!("\x08 \x08");
+        if b == 0x02 { // Ctrl-b: one echo char left
+            if cur > 0 {
+                cur -= 1;
+                echo_goto(row, plen, cur);
                 flush_stdout();
             }
             continue;
+        }
+        if b == 0x06 { // Ctrl-f: one echo char right
+            if cur < tl {
+                cur += 1;
+                echo_goto(row, plen, cur);
+                flush_stdout();
+            }
+            continue;
+        }
+        if b == 0x01 { // Ctrl-a: echo line start
+            cur = 0;
+            echo_goto(row, plen, cur);
+            flush_stdout();
+            continue;
+        }
+        if b == 0x05 { // Ctrl-e: echo line end
+            cur = tl;
+            echo_goto(row, plen, cur);
+            flush_stdout();
+            continue;
+        }
+        if b == 0x1b { // ANSI arrow keys: ESC [ A/B/C/D (A/B unused here)
+            let n = read_byte();
+            if n == 0x5b {
+                let t = read_byte();
+                if t == 0x44 { // Left: one echo char left
+                    if cur > 0 {
+                        cur -= 1;
+                        echo_goto(row, plen, cur);
+                        flush_stdout();
+                    }
+                } else if t == 0x43 { // Right: one echo char right
+                    if cur < tl {
+                        cur += 1;
+                        echo_goto(row, plen, cur);
+                        flush_stdout();
+                    }
+                }
+            }
+            continue;
+        }
+        if b == 0x7f { // backspace: delete the char left of the cursor
+            if cur > out.len() {
+                cur = out.len(); // the candidate list echo is not editable
+            }
+            if cur > 0 {
+                out.remove(cur - 1);
+                cur -= 1;
+                list = vec![]; // input edited: the listed candidates are stale
+                echo_tail(row, plen, cur, &out);
+                echo_goto(row, plen, cur);
+                flush_stdout();
+            }
+            continue;
+        }
+        // printable char: insert at the cursor, clamped to the input end
+        // (the candidate list echo is not editable); the echo tail shifts.
+        if cur > out.len() {
+            cur = out.len();
         }
         let c = read_char_from(b);
-        out.push(c);
-        print!("{}", c);
+        out.insert(cur, c);
+        cur += 1;
+        if list.len() > 0 {
+            list = vec![]; // input edited: the listed candidates are stale
+        }
+        echo_tail(row, plen, cur - 1, &out);
+        echo_goto(row, plen, cur);
         flush_stdout();
     }
 }
@@ -325,4 +469,30 @@ pub fn read_line_buffers(prompt: String, names: Vec<String>) -> String {
 // Minibuffer line with Tab completion over the filesystem.
 pub fn read_line_files(prompt: String) -> String {
     return read_line_c(prompt, vec![], true);
+}
+
+#[cfg(test)]
+mod tests {
+use super::*;
+#[test]
+fn echo_list_width() {
+    assert!(list_width(vec![]) == 0);
+    // "  aa ab": 2 separators + "aa " + "ab "
+    assert!(list_width(vec!["aa".to_string(), "ab".to_string()]) == 8);
+    assert!(list_width(vec!["*demo*".to_string()]) == 9);
+}
+#[test]
+fn candidate_under_cursor() {
+    // echo: [aa ab], input "a" at 0, list starts at 1+2=3: aa spans 3..5, ab 6..8
+    let l = vec!["aa".to_string(), "ab".to_string()];
+    assert!(cand_at(l.clone(), 1, 3) == "aa"); // caret before "aa"
+    assert!(cand_at(l.clone(), 1, 4) == "aa"); // caret inside "aa"
+    assert!(cand_at(l.clone(), 1, 5) == "aa"); // caret after "aa"
+    assert!(cand_at(l.clone(), 1, 6) == "ab"); // caret before "ab"
+    assert!(cand_at(l.clone(), 1, 8) == "ab"); // caret after "ab"
+    assert!(cand_at(l.clone(), 1, 1) == "");   // caret in the input
+    assert!(cand_at(l.clone(), 1, 2) == "");   // caret in the separator gap
+    assert!(cand_at(l.clone(), 1, 9) == "");   // caret past the trailing space
+    assert!(cand_at(vec![], 0, 0) == "");
+}
 }

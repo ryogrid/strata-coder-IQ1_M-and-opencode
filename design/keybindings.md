@@ -83,6 +83,17 @@ then the pair splits at >= 2 without a boundary).
 |-----|---------|
 | `C-l` | `goto-line`: minibuffer reads a line number, point moves to the start of that line (1-based, clamped to the last line); empty cancels, zero or non-digits report `Invalid line number: <input>` |
 
+## Minibuffer
+
+| Key | Command |
+|-----|---------|
+| `Tab` | `minibuffer-complete`: a unique match echoes the suffix; several matches echo the common prefix and list the candidates after the input (`"  cand1 cand2 ... "`) |
+| arrows / `C-b` / `C-f` | move the cursor one char left/right over the echoed line (the typed input and the listed candidates) |
+| `C-a` / `C-e` | echo line start / end |
+| `DEL` | delete the char left of the cursor (editing the input clears a stale candidate list echo) |
+| `Enter` | accept; while the cursor is on a listed candidate that candidate is selected (the switch/open proceeds with it), elsewhere the typed input is accepted (empty input cancels) |
+| `C-g` | cancel |
+
 ## Display
 
 - Syntax highlighting (automatic, no key): buffer language detected from the

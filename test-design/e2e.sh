@@ -831,7 +831,73 @@ t_s124() {  # user's exact sequence: file-arg launch + C-x 3 + C-x o + Tab compl
 
 printf '%s' '-INSERTED-' > /tmp/emur-e2e-insert.txt
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124; do
+t_s130() {  # C-x C-b: Tab lists all names; arrow-lefts land the caret on "aa"; Enter selects it
+  start_session s130
+  sendb $'\030b' 'aa'
+  enter
+  sendb $'\030b' 'ab'
+  enter
+  sendb $'\030\002'
+  tmux send-keys -t "$SESSION" Tab
+  sleep "$STEP"
+  local ok=1
+  expect 'Buffers: \*demo\* aa ab Enter=next, name:   \*demo\* aa ab' || ok=0
+  tmux send-keys -t "$SESSION" Left Left Left Left
+  sleep "$STEP"
+  enter
+  expect_lastline 'Buf aa 1/1 (0%)' || ok=0
+  report s130 "$ok"
+}
+
+t_s131() {  # C-x b: Tab lists aa ab; C-b moves the caret onto the last candidate; Enter selects it
+  start_session s131
+  sendb $'\030b' 'aa'
+  enter
+  sendb $'\030b' 'ab'
+  enter
+  sendb $'\030b' $'a\t'
+  local ok=1
+  expect 'Switch to buffer: a  aa ab' || ok=0
+  sendb $'\002'
+  enter
+  expect_lastline 'Buf ab 1/1 (0%)' || ok=0
+  report s131 "$ok"
+}
+
+t_s132() {  # Enter with the caret past the list accepts the typed input (creates buffer "a")
+  start_session s132
+  sendb $'\030b' 'aa'
+  enter
+  sendb $'\030b' 'ab'
+  enter
+  sendb $'\030b' $'a\t'
+  local ok=1
+  expect 'Switch to buffer: a  aa ab' || ok=0
+  enter
+  expect_lastline 'Buf a 1/1 (0%)' || ok=0
+  report s132 "$ok"
+}
+
+t_s133() {  # Find file: Tab lists two files; arrow-lefts land on the first candidate; Enter opens it
+  mkdir -p /tmp/emur-cx
+  printf 'S133 A\n' > /tmp/emur-cx/s133-a.txt
+  printf 'S133 B\n' > /tmp/emur-cx/s133-b.txt
+  start_session s133
+  sendb $'\030\006' '/tmp/emur-cx/s133-'
+  tmux send-keys -t "$SESSION" Tab
+  sleep "$STEP"
+  local ok=1
+  expect '/tmp/emur-cx/s133-a\.txt /tmp/emur-cx/s133-b\.txt' || ok=0
+  local i
+  for i in $(seq 1 25); do tmux send-keys -t "$SESSION" Left; done
+  sleep "$STEP"
+  enter
+  expect 'S133 A' || ok=0
+  expect_lastline 'Buf /tmp/emur-cx/s133-a.txt 1/2 (0%)' || ok=0
+  report s133 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133; do
   "$t"
 done
 

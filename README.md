@@ -106,7 +106,11 @@ Run the editor from a real terminal:
   `Invalid line number: <input>`.
 - **Minibuffer and Tab completion** — file paths, buffer names and search/
   goto queries are typed in the bottom-row minibuffer (Tab completion works
-  in path and buffer-name prompts; see Key bindings).
+  in path and buffer-name prompts; see Key bindings). When Tab lists
+  several candidates they are echoed after the input: the arrow keys (or
+  `C-b`/`C-f`, plus `C-a`/`C-e`) move the cursor over the echoed line, and
+  Enter on one of the listed candidates selects it; Enter elsewhere
+  accepts the typed input.
 - **File operations** — `C-x C-f` opens a file into the active window's
   buffer (with a lone window it first splits below and shows the file there;
   buffer name = path, shown by the status line); `C-x C-s` saves the
@@ -189,5 +193,6 @@ Run the editor from a real terminal:
 | `C-s` | incremental forward search: type the query one char at a time, each char moves point to the end of the (wrapping) match; a char that matches nowhere rings the bell and is dropped; `C-s` repeats the query, Enter accepts, Ctrl-g cancels (point restored) |
 | `C-r` | backward search: whole query typed in the bottom-row minibuffer, ends with Enter |
 | `C-l` | go to line: number typed in the minibuffer, point moves to the start of that line (1-based, clamped to the last line) |
-| `Tab` (in a minibuffer prompt) | complete a file path (file prompts) or a buffer name (`C-x b`, `C-x C-b`) |
-| Enter (in a minibuffer prompt) | end the prompt/query (empty input cancels) |
+| `Tab` (in a minibuffer prompt) | complete a file path (file prompts) or a buffer name (`C-x b`, `C-x C-b`); several matches echo the common prefix and list the candidates after the input |
+| arrows / `C-b` / `C-f` / `C-a` / `C-e` (in a minibuffer prompt) | move the cursor over the echoed line (the typed input and the listed candidates) |
+| Enter (in a minibuffer prompt) | end the prompt/query (empty input cancels); when Tab has listed several candidates, Enter while the cursor is on one of them selects it |

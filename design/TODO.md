@@ -32,3 +32,4 @@ Progress tracker. One commit per completed task. Check off as done.
 - [x] 16. Ctrl-l go-to-line (minibuffer line number, point to line start, clamped)
 - [x] 17. Boundary lines between split windows (`|` column for C-x 3, `-` row for C-x 2) + harness s120-s124 covering C-x 3 / C-x o / C-x C-f (incl. Tab listing cancelled with C-g) / C-n scroll combos (the user-reported sequence, s124)
 - [x] 18. C-x C-f no longer re-splits an already split window: the file buffer loads into the ACTIVE window; the split-below convenience happens only with a single window (s63-style)
+- [x] 19. Minibuffer Enter-on-candidate: Tab echoes several candidates after the input; arrows / C-b/C-f/C-a/C-e move the cursor over the echoed line and Enter on a listed candidate selects it (editing the input clears a stale list); e2e s130-s133
