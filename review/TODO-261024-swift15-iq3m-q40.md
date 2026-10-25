@@ -632,3 +632,9 @@
   証拠=unit 38/38・build/clippy `--all-targets` 0・`RUSTFLAGS=-D warnings --locked
   --all-targets` rc0・フル e2e 89/89(run31)+release smoke 6/6(rs19)。
   (fix #24 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #24b(このコミット)**: s160 の CI 強化(fix #24=3ab98fd の
+  CI で s160 のみ FAIL、ローカル 89/89 に対し GitHub runner の root は
+  エントリが多く 80 列で折り返し `' /usr/'` トークンが pane 行をまたいだ)。
+  一覧検査を `cap | tr -d '\n' | grep -qE '/usr/'`(改行除去で折返しトークン
+  再接続)へ、加えて `/u`+Tab の一意補完 echo `Find file: /usr/`(17 列で
+  折り返し無し・root 直下は /u* が usr のみ)を追加。s160 単独 3 連 PASS。

@@ -988,7 +988,17 @@ t_s160() {  # T-8: Tab at root lists / (the old read_dir("") gap); dirs carry '/
   tmux send-keys -t "$SESSION" Tab
   sleep "$STEP"
   local ok=1
-  expect ' /usr/' || ok=0 # /usr is a real dir on every Linux (merged-usr /bin is a symlink: no slash); entries keep the typed '/' head
+  # /usr is a real dir on every Linux (merged-usr /bin is a symlink: NO
+  # slash). The root list is long and WRAPS at 80 cols - CI runners have
+  # more root entries than this box and split the "/usr/" token mid-glyph,
+  # so strip the pane newlines to rejoin wrapped tokens before grepping.
+  cap | tr -d '\n' | grep -qE '/usr/' || ok=0
+  # second probe: unique completion echo, wrap-proof (17 cols on any width)
+  sendb $'\007' # C-g cancels the open prompt
+  sendb $'\030\006' '/u'
+  tmux send-keys -t "$SESSION" Tab
+  sleep "$STEP"
+  expect 'Find file: /usr/' || ok=0 # the only root /u* is usr; the dir echo carries the slash
   report s160 "$ok"
 }
 
