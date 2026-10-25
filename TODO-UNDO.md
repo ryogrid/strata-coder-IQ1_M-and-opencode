@@ -89,9 +89,10 @@
 
 ## Phase G: コミット
 
-- [ ] G1 `git add -A && git commit -n`(ユーザ指示により -n)+push
-- [ ] G2 CI 緑確認(gh run watch)
-- [ ] G3 変更履歴の最終化(コミットハッシュ・バックフィル)
+- [x] G1 `git add -A && git commit -n`(ユーザ指示により -n)+push
+      =コミット a993c42
+- [x] G2 CI 緑確認(run 40191141286、gates 4m54s、rc=0)
+- [x] G3 変更履歴の最終化(本コミットで a993c42 を反映)
 
 ## 学習記録
 
@@ -128,7 +129,8 @@
   main.rs undo スタック+10 ハンドラ+ループ配線)・単体テスト 10 件・
   e2e s161・PBT P0 Snap/Restore と P2/P3/P4 Undo・README/設計文書 D 更新を
   作業ツリーに集約。
-- 2026-10-25: readme-reviewer 织り込み(Undo 記述は全件正確の判定。他 drift
+- 2026-10-25: 実装+テスト+ドキュメント一式=コミット **a993c42**
+  (push+CI 緑 run 40191141286)。readme-reviewer 织り込み(Undo 記述は全件正確の判定。他 drift
   8 指摘=ステータス行「1 フレーム」主張の実態化/Wrote \<path\>/libc 依存/
   repo 一覧に pbt-test・docs・review/cargo test 説明+PBT entry/
   highlight 拡張 cc,hpp/keybindings.md に C-/ 行/dev-env OpenCode 版)。
