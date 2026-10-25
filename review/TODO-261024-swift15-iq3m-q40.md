@@ -712,7 +712,7 @@
   --locked --all-targets` rc0・フル e2e 89/89(run32、s133 の 451KB 巨大 buffer
   描画 performance 含む)+release smoke 6/6(rs20)。
   (fix #25 のコミットハッシュは次エントリに記載=654724e)
-- 2026-10-25: **fix #26(このコミット)**: M-14(所有 String の複製を borrow API へ)。
+- 2026-10-25: **fix #26(コミット cdfe899)**: M-14(所有 String の複製を borrow API へ)。
   main.rs=`read_file(&str)`/`write_file(&str,&str)`/`find_buffer(&str)`+呼び出し側
   `&path`/`&sel`(2 箇所ある write_file のうち 1 箇所だけ置換された初回は
   ビルドエラーで検出)、`filename.clone().map(to_string)`→`unwrap_or_default`、
@@ -735,7 +735,7 @@
   を所有権移動へ(パラメータ msg は label 以降 dead)。ゲート記載の pre-existing
   指摘(main.rs 209 `Some(path.clone())`=path は最終使用、移動可)は M-14 の
   追及外として TODO に記録(次回の掃除候補)。
-- 2026-10-25: **fix #27(このコミット)**: M-11 ディスパッチのテーブル化
+- 2026-10-25: **fix #27(コミット 07e7be3)**: M-11 ディスパッチのテーブル化
   (Design Doc D 実装、挙動・出力 byte 同一=89 e2e 全通過で担保)。
   `src/keymap.rs`=単一バインド表+`Cmd` enum(42 variant、#[derive(PartialEq,Eq,Debug)])。
   main.rs=chain 300 行を `Ed`(bufs/tree/active/msg/killed/prev_cmd/moved)の
@@ -760,3 +760,12 @@
   漏らした `self.` 3 箇所(migrated comments)の原語復元。ゲート記載の
   pre-existing 指摘=keybindings.md の main-buffer 矢印(ESC-[ A-D)は Minibuffer
   節にしか記載無し(表には存在)=keybindings.md は本 fix 範囲外、掃除候補として記録。
+- 2026-10-25: **全項目完了**:高8/中26/低32 の全チェックボックス完了
+  (fix #1〜#27、各 1 指摘=1 コミット、プレコミット・サブエージェントゲート
+  必須、ゲート APPROVE 前にコミットした逸脱は fix #22 の 1 件のみ=台帳に記録済み)。
+  最終ゲート=unit 42/42・build/clippy `--all-targets` 0・
+  `RUSTFLAGS=-D warnings --locked --all-targets` rc0・フル e2e 89/89・
+  release smoke 6/6・CI green(master、run10=07e7be3 で連続 6 緑)。
+  残扫除候補(ゲート記載の pre-existing、台帳外):main.rs `Some(path.clone())`
+  の移動化(fix #26 ゲート)/design/keybindings.md の main-buffer 矢印記載
+  (fix #27 ゲート)/architecture.md 旧 curses 記述(fix #17 範囲外の残記述)。
