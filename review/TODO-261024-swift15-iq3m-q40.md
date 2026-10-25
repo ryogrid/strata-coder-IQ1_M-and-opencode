@@ -124,7 +124,21 @@
   $HOME のファイルを開く)/s160(`/` Tab で ` /usr/` 一覧)(fix #24)
 - [x] **T-9**: VMIN/VTIME 明示設定。04 §T-9
   → save_raw_mode で `c_cc[VMIN]=1`/`c_cc[VTIME]=0` を明示(環境継承に依存しないblocking 1 バイト読み)。フル e2e 全入力経路が回帰網(fix #22)
-- [ ] **T-11**: print+flush 出力ヘルパー集約。04 §T-11
+- [x] **T-11**: print+flush 出力ヘルパー集約。04 §T-11
+  → `terminal::emit(s)` 新設(print+flush の 1 呼び出し)。散在していた print! の後
+  追掛け flush を全吸収:screen.rs=`screen_clear`(自己 flush 化)/`draw_cell`
+  (カーソル移動+セル+flush を 1 emit、per-cell atomicity はそのまま)/カーソル
+  park(末尾 flush は全 emit が flush 済みなため不要と明記)、main.rs=Search
+  プロンプト/クエリ echo/ベル(3 箇所)、terminal.rs=`read_line_c` の
+  プロンプト表示/Enter/Ctrl-g/Tab ベル/Tab 補完(累積 print ループを文字列
+  蓄積+1 emit に、一覧 echo も同様)/カーソル移動 8 箇所(`echo_goto` 自己
+  flush 化、`echo_tail` は随伴する `echo_goto` が flush=コメント明記)。
+  出力バイト列は全経路で同一(emit=print 文字列連結後に 1 flush)。
+  `flush_stdout` は残す(echo_goto と emit の実体、raw モード復帰経路で使用中)。
+  証跡=unit 38/38・clippy `--all-targets` 0・`RUSTFLAGS=-D warnings --locked
+  --all-targets` rc0・フル e2e 89/89(run32、s133 の 451KB 巨大 buffer 描画
+  performance 含む)+release smoke 6/6(rs20)。probe(C-x 2/C-x 3/collapse、
+  入力+カーソル+backspace、補完 echo、Search prompt、status line)PASS(fix #25)
 - [x] **H-4**: md_styles 未閉結バッククォートのテスト追加。05 §H-4
   → unit md_unclosed_code_span_stops_at_line_end:未閉結 ` は行末まで装飾し次行を巻き込まないことをアサート(fix #21)
 - [x] **H-5**: 数値スキャン過装飾(2hex)の軽微修正/注記。05 §H-5
@@ -631,10 +645,26 @@
   dir `/`/`~` 展開/ベル/EISDIR 失敗を追記。ゲート APPROVE 後コミット。
   証拠=unit 38/38・build/clippy `--all-targets` 0・`RUSTFLAGS=-D warnings --locked
   --all-targets` rc0・フル e2e 89/89(run31)+release smoke 6/6(rs19)。
-  (fix #24 のコミットハッシュは次エントリに記載)
+  (fix #24 のコミットハッシュは次エントリに記載=3ab98fd/s160 強化=d5376c4)
 - 2026-10-25: **fix #24b(このコミット)**: s160 の CI 強化(fix #24=3ab98fd の
   CI で s160 のみ FAIL、ローカル 89/89 に対し GitHub runner の root は
   エントリが多く 80 列で折り返し `' /usr/'` トークンが pane 行をまたいだ)。
   一覧検査を `cap | tr -d '\n' | grep -qE '/usr/'`(改行除去で折返しトークン
   再接続)へ、加えて `/u`+Tab の一意補完 echo `Find file: /usr/`(17 列で
   折り返し無し・root 直下は /u* が usr のみ)を追加。s160 単独 3 連 PASS。
+- 2026-10-25: **fix #25(このコミット)**: T-11 出力ヘルパー集約(挙動=出力
+  byte 同一)。`terminal::emit(s)`(print+flush を 1 呼び)を新設し、全経路の
+  print!+末尾 flush ペアを吸収:screen.rs=screen_clear 自己 flush 化(draw_all
+  の追随 flush 削除)・draw_cell の 2 print+flush を 1 emit(per-cell atomicity
+  維持)・cursor park(draw_all 末尾 flush は全 emit が flush 済みなため削除)、
+  main.rs=Search プロンプト・クエリ echo・ベル(C-s 重複時の空 flush は no-op
+  だったと明記)、terminal.rs=read_line_c の prompt 表示/Enter/Ctrl-g/Tab
+  ベル/Tab 補完 2 系統(累積 print! ループは文字列蓄積+1 emit)/カーソル移動
+  8 箇所は echo_goto 自己 flush 化(echo_tail は随伴 echo_goto が flush)。
+  旧 probe の FAIL 2 つは probe 側の期待誤り(検索対象 buffer が補完開封後の
+  a1.txt、status の buffer 名は path 表記、`Search: ` の末尾空白は cap で除去)
+  と判定、実装不具合なし。期待を実態に修正し 2 連 PASS。
+  証拠=unit 38/38・build/clippy `--all-targets` 0・`RUSTFLAGS=-D warnings
+  --locked --all-targets` rc0・フル e2e 89/89(run32、s133 の 451KB 巨大 buffer
+  描画 performance 含む)+release smoke 6/6(rs20)。
+  (fix #25 のコミットハッシュは次エントリに記載)

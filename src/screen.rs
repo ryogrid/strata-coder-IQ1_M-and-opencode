@@ -25,7 +25,9 @@ pub fn term_size() -> termsize::Size {
 // Terminal), which shifts each line by one char. Manual moves
 // are always 1-based ESC[<row>;<col>H and every cell is flushed atomically.
 pub fn screen_clear() {
-    print!("\x1b[2J\x1b[1;1H");
+    // T-11: self-flushing (the old bare print! relied on draw_all's
+    // trailing flush_stdout()).
+    super::terminal::emit("\x1b[2J\x1b[1;1H".to_string());
 }
 
 // Per-frame render cache for one buffer (Design Doc B / S-1): text(), lines,
@@ -148,7 +150,6 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         cols = 80;
     }
     screen_clear();
-    super::terminal::flush_stdout();
 
     let height = if rows > 1 { rows - 1 } else { 1 };
     let frames = tree.layout(tree.root, 0, height, 0, cols);
@@ -286,10 +287,10 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
             // while that invariant holds. The guard protects the status
             // row if that ever changes (point/caret logic untouched).
         }
-        print!("\x1b[{};{}H", crow + 1, ccol + 1);
-        super::terminal::flush_stdout();
+        super::terminal::emit(format!("\x1b[{};{}H", crow + 1, ccol + 1));
     }
-    super::terminal::flush_stdout();
+    // T-11: no trailing flush needed - every emit above (draw_cell,
+    // status, cursor) already flushed the userspace buffer.
     tree
 }
 
@@ -356,9 +357,10 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<Sty
         }
     }
     let padded = out.iter().collect::<String>();
-    print!("\x1b[{};{}H", row + 1, col + 1);
-    print!("{}", padded);
-    super::terminal::flush_stdout();
+    // T-11: one emit = cursor move + cell text + flush (was two print!s
+    // and a flush; the per-cell flush is the atomicity the header
+    // comment promises).
+    super::terminal::emit(format!("\x1b[{};{}H{}", row + 1, col + 1, padded));
 }
 
 #[cfg(test)]

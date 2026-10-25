@@ -14,6 +14,16 @@ pub fn flush_stdout() {
     let _ = so.flush();
 }
 
+// T-11: one visible update = print + flush in a SINGLE call. Every
+// trailing flush_stdout() used to pair with the print!s above it by
+// convention; emit() makes the pair unforgettable (a forgotten flush
+// is the classic line-buffered-stdout failure the comment above warns
+// about: a screen that updates late, or never).
+pub fn emit(s: String) {
+    print!("{}", s);
+    flush_stdout();
+}
+
 // Put the controlling tty into raw mode so control codes arrive as raw bytes.
 // Returns a guard restoring the original settings when dropped (normal exit,
 // early return, panic unwinding), so raw mode never leaks. The saved termios
@@ -384,11 +394,19 @@ pub fn cand_at(list: Vec<String>, inp: usize, cur: usize) -> String {
 // Park the real terminal cursor at echo-column cur of the minibuffer row
 // (base column offset plen CELLS, 1-based screen row row).
 fn echo_goto(row: usize, plen: usize, cur: usize) {
+    // T-11: self-flushing - every call site parks the cursor AND SHOWS
+    // the move, so the flush travels with it (the old bare print! relied
+    // on a trailing flush_stdout() at each of the eight sites).
     print!("\x1b[{};{}H", row, plen + cur + 1);
+    flush_stdout();
 }
 
 // Erase from the caret's CELL column (col, screen 1-based via col+1) to the
 // end of the row, then echo the input tail out[cur..]; leaves the real
+// T-11 FLUSH CONTRACT: echo_tail prints WITHOUT flushing; every caller must
+// follow it with a flushing call (both sites use echo_goto, self-flushing).
+// A new caller without a trailing flush leaves the echo in the userspace
+// buffer - the exact bug class emit() was born to kill.
 // cursor after the printed tail. cur is a CHAR index into out (Design Doc
 // C / Major-1 gate fix: col comes in as a cell column computed by the
 // caller's caret_col - NO cell-minus-char subtraction inside: a combining
@@ -432,9 +450,7 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
     let sz = crate::screen::term_size();
     let row: usize = if sz.rows > 0 { sz.rows as usize } else { 24 };
     let plen_c = cells_of(&chars_of(prompt.clone())); // prompt width in CELLS
-    print!("\x1b[{};1H\x1b[2K", row);
-    print!("{}", prompt);
-    flush_stdout();
+    emit(format!("\x1b[{};1H\x1b[2K{}", row, prompt));
     let mut out: Vec<char> = vec![];    // the typed input
     let mut list: Vec<String> = vec![]; // candidates echoed after the input
     let mut cur: usize = 0;             // caret coord, dual-unit (see caret_col)
@@ -454,14 +470,12 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                 }
             }
             echo_goto(row, 0, caret_col(plen_c, &out, tl));
-            print!("\r\n");
-            flush_stdout();
+            emit("\r\n".to_string());
             return Some(ret);
         }
         if b == 0x07 { // Ctrl-g: cancel
             echo_goto(row, 0, caret_col(plen_c, &out, tl));
-            print!(" [Cancelled]\r\n");
-            flush_stdout();
+            emit(" [Cancelled]\r\n".to_string());
             return Some("".to_string());
         }
         if b == 0x09 { // Tab: minibuffer completion
@@ -474,45 +488,50 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                 // feedback). \x07 is BEL; terminals render it audibly
                 // (or visibly, per bell settings) and tmux passes it
                 // through (last-line "Bell" flag).
-                print!("\x07");
-                flush_stdout();
+                emit("\x07".to_string());
             } else if hits.len() == 1 {
                 cur = out.len();
+                // T-11: the completion echo (stale-list erase + the
+                // suffix) accumulates into ONE string and goes out as a
+                // single emit; the per-char print! loop was just the
+                // flush trailing behind it.
+                let mut echo = String::new();
                 if !list.is_empty() { // input changes: the old list echo is stale
                     list = vec![];
-                    print!("\x1b[{};{}H\x1b[K", row, caret_col(plen_c, &out, cur) + 1);
+                    echo += &format!("\x1b[{};{}H\x1b[K", row, caret_col(plen_c, &out, cur) + 1);
                 }
                 let full = chars_of(hits[0].clone());
                 let mut k = chars_of(inp.clone()).len();
                 while k < full.len() {
                     out.push(full[k]);
-                    print!("{}", full[k]);
+                    echo.push(full[k]);
                     k += 1;
                 }
                 cur = out.len();
-                flush_stdout();
+                emit(echo);
             } else if hits.len() > 1 {
                 cur = out.len();
+                let mut echo = String::new(); // T-11: one emit for the whole relist
                 if !list.is_empty() { // relisting: erase the old list echo
-                    print!("\x1b[{};{}H\x1b[K", row, caret_col(plen_c, &out, cur) + 1);
+                    echo += &format!("\x1b[{};{}H\x1b[K", row, caret_col(plen_c, &out, cur) + 1);
                 }
                 let cp = common_prefix(hits.clone());
                 let cpc = chars_of(cp);
                 let mut k = chars_of(inp.clone()).len();
                 while k < cpc.len() {
                     out.push(cpc[k]);
-                    print!("{}", cpc[k]);
+                    echo.push(cpc[k]);
                     k += 1;
                 }
-                print!("  ");
+                echo += "  ";
                 let mut m = 0;
                 while m < hits.len() {
-                    print!("{} ", hits[m]);
+                    echo += &format!("{} ", hits[m]);
                     m += 1;
                 }
                 list = hits.clone();
                 cur = out.len() + list_width(list.clone());
-                flush_stdout();
+                emit(echo);
             }
             continue;
         }
@@ -520,7 +539,6 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
             if cur > 0 {
                 cur -= 1;
                 echo_goto(row, 0, caret_col(plen_c, &out, cur));
-                flush_stdout();
             }
             continue;
         }
@@ -528,20 +546,17 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
             if cur < tl {
                 cur += 1;
                 echo_goto(row, 0, caret_col(plen_c, &out, cur));
-                flush_stdout();
             }
             continue;
         }
         if b == 0x01 { // Ctrl-a: echo line start
             cur = 0;
             echo_goto(row, 0, caret_col(plen_c, &out, cur));
-            flush_stdout();
             continue;
         }
         if b == 0x05 { // Ctrl-e: echo line end
             cur = tl;
             echo_goto(row, 0, caret_col(plen_c, &out, cur));
-            flush_stdout();
             continue;
         }
         if b == 0x1b { // ANSI arrow keys: ESC [ A/B/C/D (A/B unused here)
@@ -552,13 +567,11 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                     if cur > 0 {
                         cur -= 1;
                         echo_goto(row, 0, caret_col(plen_c, &out, cur));
-                        flush_stdout();
                     }
                 } else if t == 0x43 { // Right: one echo char right
                     if cur < tl {
                         cur += 1;
                         echo_goto(row, 0, caret_col(plen_c, &out, cur));
-                        flush_stdout();
                     }
                 }
             }
@@ -573,8 +586,8 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                 cur -= 1;
                 list = vec![]; // input edited: the listed candidates are stale
                 echo_tail(row, caret_col(plen_c, &out, cur), cur, &out);
+                // T-11: echo_goto flushes the tail echo it follows
                 echo_goto(row, 0, caret_col(plen_c, &out, cur));
-                flush_stdout();
             }
             continue;
         }
@@ -591,7 +604,6 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
         }
         echo_tail(row, caret_col(plen_c, &out, cur - 1), cur - 1, &out);
         echo_goto(row, 0, caret_col(plen_c, &out, cur));
-        flush_stdout();
     }
 }
 

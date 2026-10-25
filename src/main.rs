@@ -335,9 +335,7 @@ fn main() {
             let mut last = orig; // start position of the current match
             let szs = screen::term_size();
             let prow = if szs.rows > 0 { szs.rows } else { 24 };
-            print!("\x1b[{};1H\x1b[2K", prow);
-            print!("Search: ");
-            terminal::flush_stdout();
+            terminal::emit(format!("\x1b[{};1H\x1b[2KSearch: ", prow));
             let mut cancelled = false;
             loop {
                 let rb2 = terminal::read_byte_eof();
@@ -402,12 +400,12 @@ fn main() {
                     bufs[bi].point = end;
                     last = end - qs.len();
                     if c2 != 0x13 {
-                        print!("{}", echo_ch); // echo the query char
+                        terminal::emit(echo_ch.to_string()); // echo the query char
                     }
-                    terminal::flush_stdout();
+                    // (C-s repeats print nothing: the old trailing flush
+                    // was an empty-buffer no-op)
                 } else {
-                    print!("\x07"); // bell: char ignored
-                    terminal::flush_stdout();
+                    terminal::emit("\x07".to_string()); // bell: char ignored
                 }
             }
             if cancelled {
