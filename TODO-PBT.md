@@ -113,12 +113,28 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 - [ ] G3 プロパティ設計:P5=全面描画差分(生成列を model と emur が
       同じキー入力で実行→グリッド一致)、P6=ミニバッファ状態遷移
       (入力/Tab/yes|no/C-g/EOF)、P7=分割×プレフィックス列挙交互
-- [ ] G4 `test-design/pbt-design-combination/` に英文マークダウン群で
-      書き出し(README 索引+各文書。found-bugs は既存 pbt-design/
-      found-bugs.md 継続=英文)
-- [ ] G5 設計ゲート(サブエージェント)を HEAD 実装と照合して実行 →
-      指摘全件織り込み
-- [ ] G6 区切りの良い時点で commit -n+push+CI 緑確認(設計文書コミット)
+- [x] G4 `test-design/pbt-design-combination/` に英文マークダウン群で
+      書き出し(README/01 overview/02 model/03 properties/04 harness/
+      05 known-gaps。found-bugs は既存 pbt-design/found-bugs.md 継続=英文)。
+      設計中の追加判断:window.rs/buffer.rs は `#[path]` で逐語 include(純粋)、
+      screen.rs/terminal.rs は入出力境界のため I/O 制約と MA-2 dead_code を避け
+      **モデル側ミラー**(規則は screen.rs/terminal.rs 行番号付きで対応表化)。
+      全面差分=80x24 グリッド vs capture(行末 trim 法)
+- [ ] G4b 設計中の追加発見:C-x C-s はプロンプト無し(bound filename /
+      未bound=No file name for this buffer)=P5 op 追加済み
+- [x] G5 設計ゲート(サブエージェント、HEAD 実装照合)=APPROVE-WITH-CHANGES
+      → 全件織り込み済み(Major J1-J6/Minor m1-m13、計 19 件):
+      J1 `@`=単字+余白(draw_cell 246 実態、全文字@行は全 EOB 行で誤検出)、
+      J2 C-x C-s と seed 不変条件の矛盾→生成器規則(seed 結合 buffer に出さない)、
+      J3 mid-prompt echo の 80 cell 超ラップ→echo バジェット法+P6 seed 短縮、
+      J4 isearch ループ全 arm(DEL pop/C-s repeat/ESC 矢印/MISS は qs から落ちる)追記、
+      J5 support 3 層化(core/sess/narrow)で MA-2 使用地図を全 item 自然使用に確定、
+      J6 plain C-g(Cancelled)を P5 op 追加、m1=emur_bin/tmux は private、
+      m2=SETTLE は 4 個、m3=s90-s94/s140-s142 の引用正確化、m4-m13=引用/文言修正。
+      ゲートが HEAD で TRUE を確認した重要主張:P6 の「listform C-x C-b + C-g は
+      Cancelled でなく CYCLS する」(main.rs:410-419)、window.rs 純粋性、
+      ENOENT 文字列予測可能性、checkpoints の宙吊りなし
+- [~] G6 設計文書コミット=commit -n+push 実施中(以下でハッシュ確定)+CI 緑確認
 
 ## Phase H: 結合テスト実装
 
