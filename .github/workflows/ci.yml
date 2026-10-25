@@ -11,6 +11,11 @@ on:
 jobs:
   gates:
     runs-on: ubuntu-24.04
+    # Backstop for the PBT tmux step: proptest runs with timeout=0
+    # (fork mode is incompatible with the tmux Drop guards, PBT design
+    # 03 "Config plumbing"), so a hung case has no per-case kill;
+    # this job timeout is the outer bound (05).
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -25,3 +30,21 @@ jobs:
         run: cargo test --locked
       - name: e2e suite (tmux, preinstalled on ubuntu runners)
         run: bash test-design/e2e.sh
+      # PBT (test-design/pbt-design/05): steps are serial by
+      # construction (one job), keeping the tmux non-concurrency law.
+      # The debug emur exists from the build step above.
+      - name: pbt-test build (warning-free)
+        run: RUSTFLAGS="-D warnings" cargo build --locked -p pbt-test --all-targets
+      - name: pbt-test clippy (warning-free)
+        run: cargo clippy --locked -p pbt-test --all-targets -- -D warnings
+      - name: P0 gap-buffer model (in-process)
+        run: cargo test --locked -p pbt-test --test buffer_model
+      - name: P1-P4 tmux fuzz (serialized)
+        env:
+          PBT_CASES: "8"
+          # EMUR_BIN resolves against the TEST PROCESS CWD = pbt-test/
+          # (cargo test runs the binary from its package dir), so the
+          # path carries the leading ../ (gate B-1). Unset fallback in
+          # support/mod.rs is CARGO_MANIFEST_DIR-relative = same place.
+          EMUR_BIN: "../target/debug/emur"
+        run: cargo test --locked -p pbt-test --test tmux_fuzz -- --test-threads=1

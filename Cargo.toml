@@ -3,6 +3,14 @@ name = "emur"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["pbt-test"]
+# Root commands (cargo build/test/clippy at the repo root, and the
+# existing CI steps) resolve to the emur package ONLY: the tmux PBT
+# binaries never join a parallel default-thread test run (PBT design
+# docs 02/05). PBT runs via explicit `cargo test -p pbt-test` steps.
+default-members = ["."]
+
 [dependencies]
 termsize = "0.1.9"
 termios = "0.3.3"

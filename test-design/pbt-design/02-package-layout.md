@@ -90,9 +90,11 @@ Same rule set as the root crate (AGENT.md), applied per package:
 
 Tests resolve the editor binary as:
 
-1. `$EMUR_BIN` if set (CI and scripts set this),
+1. `$EMUR_BIN` if set (CI and scripts set this; a RELATIVE value
+   resolves against the test process CWD = the package dir `pbt-test/`,
+   so CI passes `../target/debug/emur` - gate B-1),
 2. else `<manifest_dir>/../target/debug/emur`
-   (`concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/emur")`).
+   (`PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/emur")`).
 
 The harness asserts the path exists with the message
 `run: cargo build -p emur --bin emur` (so a missing binary is an

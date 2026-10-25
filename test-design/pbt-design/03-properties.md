@@ -77,9 +77,14 @@ destroying the liveness invariant (documented, accepted limitation:
 the confirm path is pinned by e2e s111 (interactive yes/y) plus
 s140/s142 (piped EOF), not fuzzed).
 
-Burst: 1..40 tokens. Suffix: two `-H 07` bytes (C-g; the first cancels
-any open prompt, incl. isearch, and/or lands as the C-x second byte
--> "Undefined command" msg; the second cleans the residue). Settle 0.8 s.
+Burst: 1..40 tokens. Suffix: FOUR `-H 07` bytes (C-g). Rationale
+(PBTF-007): the flush must survive the worst-case byte consumption of
+the state it flushes - a UTF-8 lead byte 0xF0..0xF7 consumed by
+`read_char_eof` (e.g. the printable path of the isearch loop) legally
+eats up to 3 continuation bytes, so 3 bytes are placeholders that
+guarantee the 4th C-g reaches the open prompt; the sequence also
+covers a pending C-x prefix (first C-g lands as the C-x second byte
+-> "Undefined command" msg; a later one cleans the residue). Settle 0.8 s.
 
 Invariants after settle:
 
@@ -106,7 +111,7 @@ Ops (each = one dispatch command, byte encodings exact):
 
 | op | bytes | model step (= main.rs dispatch mirror) |
 |---|---|---|
-| `Char(c)` (ASCII/CJK pool) | `-l -- c` | `self_insert(c)` -> `insert_char(c)` |
+| `Char(c)` (ASCII/CJK pool) | `-H <utf-8 hex>` | `self_insert(c)` -> `insert_char(c)` |
 | `Enter` | `-H 0d` | `insert_char('\n')` |
 | `BS` | `-H 7f` | `delete_backward()` |
 | `C-d` | `-H 04` | `delete_forward()` |
@@ -121,6 +126,14 @@ Ops (each = one dispatch command, byte encodings exact):
 | `M-b`/`M-f` | `1b 62`/`1b 66` | `backward_word()` / `forward_word()` |
 | `M-<`/`M->` | `1b 3c`/`1b 3e` | `beginning_of_buffer()` / `end_of_buffer()` |
 | arrows U/D/R/L | `1b 5b 41..44` | `previous_line`/`next_line`/`forward_char`/`backward_char` |
+
+After EVERY op the model replays the loop-top `sync_in` clamp
+(main.rs:120-132): `point = min(point, len)` AND
+`mark = min(mark, len)` (the clamp writes both leaf and buffer;
+found-bugs PBTF-006 - skipping it diverges whenever a shrink op
+(C-d/BS/C-k) runs while a prior insert put the mark ahead of the new
+end: emur's `forward_char` then jumps to the CLAMPED mark, the model
+to `point+1`).
 
 Every op records its TOP-LEVEL lead byte as "last top-level byte" (the
 loop sets `prev_cmd = b` after `sync_out`): a plain key = its own byte,
@@ -163,12 +176,17 @@ shared buffer), `Enter 0d`.
 
 Checkpoints (settle 0.5 s each, max 3 per case):
 
-- after a checkpointing `C-x 2`: >= 1 pane line matching `^-{40,}$`
-  (dash boundary row; exact multi-boundary counts are a known v1
-  weakness - existence only);
+- after a checkpointing `C-x 2`: >= 1 pane line CONTAINING a run of 8+
+  consecutive `-` (dash boundary row). The naive `^-{40,}$` line-anchored
+  test fails on real layouts: in a nested split the dash row spans only
+  its column (~39 chars at -x 80), keeps the `|` separator and the right
+  column's text ON the same line, and sits after the `|` when the active
+  window is the right column (found-bugs PBTF-004; seed/typed text has
+  no `-`, so an 8-dash run is unambiguous). Exact multi-boundary counts
+  are a known v1 weakness - existence only;
 - after a checkpointing `C-x 3`: >= 1 line containing a `|` column char;
 - final phase: always end with `-H 18 31` (C-x 1) + settle, then assert
-  NO `^-{40,}$` line and NO lone-`|` structure line; buffer text
+  NO 8-dash-run line and NO lone-`|` structure line; buffer text
   visible (`alpha` present in the capture).
 
 Plus P1 invariants 1-4. Config: 16 cases, 1..16 ops.
@@ -193,15 +211,22 @@ Config: 16 cases, 2..5 bursts + 1..4 resizes.
 ## Config plumbing (all properties)
 
 `ProptestConfig`: `cases = env PBT_CASES (default 24; P0 default 512)`,
-`timeout = 10_000` ms, `max_shrink_time = 15_000` ms (shrinking re-runs
-the tmux round-trip; iteration counts are otherwise UNBOUNDED - gate MA-3),
-`failure_persistence = None` (no regression-state files in the repo;
-proptest still prints the failing seed on stderr - record it in
-`found-bugs.md`).
+`timeout = 0` (NO fork mode - see below), `max_shrink_time = 15_000` ms
+(shrinking re-runs the tmux round-trip; iteration counts are otherwise
+UNBOUNDED - gate MA-3), `failure_persistence = None` (no
+regression-state files in the repo; proptest still prints the failing
+seed on stderr - record it in `found-bugs.md`).
 
 Serial law = `--test-threads=1` on the tmux_fuzz binary (04 §5, 05);
 proptest 1.x HAS NO `workers`/`max_concurrent_tests` fields (gate MA-1).
-NOTE: a non-zero `timeout` implicitly enables FORK mode (each case runs
-in a child process) - accepted: hung cases die at 10 s, and a
-timeout-killed child skips the Drop guard; its leaked `pbt-*` session is
-absorbed by the startup sweep (04 §1).
+DEVIATION (found-bugs PBTF-002): the design's `timeout = 10_000` was
+ABANDONED at implementation - a non-zero `timeout` implicitly enables
+FORK mode, and fork mode is incompatible with the tmux harness: killed
+children skip the Drop guard, children inherit the parent's session-name
+counter snapshot (duplicate names -> `new-session` fails), children
+inherit the completed sweep `Once` (never sweep), and child failures
+reach the parent as "failed in other process" (assertion detail lost).
+`timeout = 0` keeps everything in-process: Drop guards run, full
+messages, serialization by the single libtest thread. The lost
+protection: a hung case has NO per-case kill; the CI job
+`timeout-minutes` (05) is the backstop.

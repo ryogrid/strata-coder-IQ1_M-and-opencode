@@ -31,17 +31,21 @@ the tmux non-concurrency law (04 §5) for free:
 - name: P1-P4 tmux fuzz (serialized)
   env:
     PBT_CASES: "8"
-    EMUR_BIN: "target/debug/emur"
+    EMUR_BIN: "../target/debug/emur"
   run: cargo test --locked -p pbt-test --test tmux_fuzz -- --test-threads=1
 ```
 
 Notes:
 
+- `EMUR_BIN` is relative to the TEST PROCESS CWD, which `cargo test`
+  sets to the package dir (`pbt-test/`), NOT the repo root (gate B-1,
+  probed: `EMUR_BIN=target/debug/emur` fails the binary-exists assert,
+  `../target/debug/emur` passes); the unset fallback in support is
+  `CARGO_MANIFEST_DIR`-based and lands on the same file;
+
 - the debug `emur` exists from the CI **build step** (e2e.sh itself never
   invokes cargo), and tmux is preinstalled on ubuntu runners (the e2e
   step proves it every run);
-- `EMUR_BIN` is relative to the job's working dir (repo root) -
-  `Command::new` resolves it fine;
 - `PBT_CASES=8` keeps the tmux PBT step near 90 s;
 - if the `RUSTFLAGS=-D warnings` build trips on a third-party dependency
   warning (pre-registered in 02), this step switches to plain

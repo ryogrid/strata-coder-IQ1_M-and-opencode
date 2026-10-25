@@ -29,9 +29,12 @@ would warn, so split shared code as needed - gate: zero warnings).
   does not abort, Drop runs).
 - Startup sweep (once per test process, `std::sync::Once`): list
   sessions (`tmux list-sessions -F '#{session_name}'`), kill every name
-  starting with `pbt-` (leftovers from killed runners; this also absorbs
-  the sessions leaked by proptest fork-mode children killed on
-  `timeout` - their Drop guards never run, 03 Config plumbing).
+  starting with `pbt-` (leftovers from runners killed by the OOM killer,
+  Ctrl-C, or CI cancellation). After killing, SETTLE 600 ms: killing the
+  server's LAST session shuts the server down, and the first
+  `new-session` racing that shutdown fails with "server exited
+  unexpectedly"; `Session::start` additionally retries `new-session`
+  once after a settle (found-bugs PBTF-005).
 - The `sh -c '...'` wrapper stays shell-safe only while argv contains no
   `'` characters: true by construction (`/tmp/emur-pbt-<pid>-<id>...`
   fixed pattern, pid <= 7 digits, counter small; outpath ~34 chars,
@@ -41,8 +44,12 @@ would warn, so split shared code as needed - gate: zero warnings).
 
 - `send_hex(name, &[u8])` -> `tmux send-keys -t NAME -H <hex>...`
   (one process call per call site; hex from bytes, exact).
-- `send_text(name, &str)` -> `tmux send-keys -t NAME -l -- <text>`
-  (`--` makes `-l` literal safe for args starting with `-`).
+- `send_text(name, &str)` -> ENCODES UTF-8 to bytes and calls
+  `send_hex` (the `-H` channel above). The naive
+  `tmux send-keys -l -- <text>` is NOT used: a STANDALONE `;` argument
+  is eaten by tmux's command-splitting (`send-keys -l -- ';'` sends
+  nothing; `;` inside a longer string is fine) - verified live,
+  found-bugs PBTF-003. Hex tokens carry no command syntax.
 - Ops -> calls: one call per op (03 table). Bursts have NO inter-op
   sleeps (03 header explains the legality per property).
 - Settle after a burst: `sleep 0.8 s`; after the P2 write phase: 0.6 s.
@@ -54,8 +61,11 @@ final `C-x C-w` phase, so mid-burst byte consumption by a prompt cannot
 happen there. P1 DELIBERATELY allows prompts mid-burst (C-l, C-x b,
 C-x k, isearch, ...) - the following burst bytes become prompt input;
 that is the fuzz semantics (prompt input handling under random text is
-part of what is tested), and the C-g suffix terminates every prompt
-path (`read_line_c` Ctrl-g => Cancelled; isearch Ctrl-g => cancel;
+part of what is tested), and the C-g suffix (FOUR `-H 07` bytes: a
+UTF-8 lead byte in a prompt's read_char_eof legally eats up to 3
+continuation bytes, so the flush carries 3 placeholders + 1 real C-g -
+PBTF-007) terminates every prompt path (`read_line_c` Ctrl-g =>
+Cancelled; isearch Ctrl-g => cancel;
 confirm-exit prompt gets `""` => not "yes" => stays alive).
 
 ## 4. Capturing and asserting
