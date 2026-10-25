@@ -567,4 +567,8 @@
   (ICANON 解除だけでは環境継承の c_cc に依存する)。clippy `--all-targets` 0・
   build 0・unit 36/36・フル e2e 85/85(/tmp/e2e_run29.out=全入力経路の回帰網)・
   release 6/6(/tmp/rs17.out)。
+  ゲート APPROVE(コミット 6be8961 後に実施=手順の順序を逸脱。次コミットからゲート
+  プレコミット順序に復旧)。Minor-1=root パス `/` の Tab は `file_candidates` が
+  dir="" を read_dir("") と呼ぶため元々無一覧(既存欠陥)。新ベルが正しく鳴る。
+  T-8 で dir 空文字を `/` に写して一覧化を担保(fix #22 ゲート由来の follow-up)。
   (fix #22 のコミットハッシュは次エントリに記載)
