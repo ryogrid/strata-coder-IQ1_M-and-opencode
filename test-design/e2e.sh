@@ -940,6 +940,58 @@ t_s156() {  # C-t: NO-OP at the buffer start (B-5), swaps the chars around point
   report s156 "$ok"
 }
 
+t_s157() {  # T-8: Tab completion lists candidates alphabetically (read_dir order must not leak)
+  rm -rf /tmp/emur-e8; mkdir -p /tmp/emur-e8
+  printf 'B\n' > /tmp/emur-e8/b
+  printf 'A\n' > /tmp/emur-e8/a
+  printf 'C\n' > /tmp/emur-e8/c # creation order b, a, c
+  start_session s157
+  sendb $'\030\006' '/tmp/emur-e8/'
+  tmux send-keys -t "$SESSION" Tab
+  sleep "$STEP"
+  local ok=1
+  expect '/tmp/emur-e8/a /tmp/emur-e8/b /tmp/emur-e8/c' || ok=0
+  report s157 "$ok"
+}
+
+t_s158() {  # T-8: a directory candidate carries a trailing '/' (and opening a dir reports failure)
+  mkdir -p /tmp/emur-e8/t8dir-x
+  start_session s158
+  sendb $'\030\006' '/tmp/emur-e8/t8dir-'
+  tmux send-keys -t "$SESSION" Tab
+  sleep "$STEP"
+  local ok=1
+  expect '/tmp/emur-e8/t8dir-x/' || ok=0 # the unique completion echoed the suffix INCLUDING the slash
+  enter
+  expect 'Failed to open /tmp/emur-e8/t8dir-x/' || ok=0 # directories are not listed (EISDIR report)
+  report s158 "$ok"
+}
+
+t_s159() {  # T-8: ~ expands to $HOME (completion + open; buffer name is the real path)
+  printf 'T8 home line\n' > "$HOME/emur-t8-marker.txt"
+  start_session s159
+  sendb $'\030\006' '~/emur'
+  tmux send-keys -t "$SESSION" Tab
+  sleep "$STEP"
+  local ok=1
+  expect 'emur-t8-marker\.txt' || ok=0 # unique completion: suffix echo after ~/emur
+  enter
+  expect 'T8 home line' || ok=0
+  # expect_lastline is exact; the expanded home path varies -> grep it
+  cap | tail -1 | grep -qE '^Buf .*/emur-t8-marker\.txt 1/2 \(0%\)$' || ok=0
+  report s159 "$ok"
+}
+
+t_s160() {  # T-8: Tab at root lists / (the old read_dir("") gap); dirs carry '/'
+  start_session s160
+  sendb $'\030\006' '/'
+  tmux send-keys -t "$SESSION" Tab
+  sleep "$STEP"
+  local ok=1
+  expect ' /usr/' || ok=0 # /usr is a real dir on every Linux (merged-usr /bin is a symlink: no slash); entries keep the typed '/' head
+  report s160 "$ok"
+}
+
 t_s140() {  # exit-confirm EOF (piped stdin): clean exit, no NUL flood (T-1/M-2)
   run_pipe s140 $'x\003'
   local ok=1
@@ -1187,11 +1239,12 @@ t_s155() {  # C-x 1 then C-x C-f: the lone window splits below, file in the NEW 
   report s155 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154 t_s155 t_s156; do
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154 t_s155 t_s156 t_s157 t_s158 t_s159 t_s160; do
   "$t"
 done
 
 rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt /tmp/emur-e2e-pipe-s140.out /tmp/emur-e2e-pipe-s142.out /tmp/emur-e2e-s155.txt
+rm -rf /tmp/emur-e8; rm -f "$HOME/emur-t8-marker.txt"
 
 if [ "$FAILED" = 0 ]; then
   echo "ALL TESTS PASS"

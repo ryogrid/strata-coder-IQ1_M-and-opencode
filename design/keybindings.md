@@ -90,7 +90,9 @@ confirmation and has no completion). The `C-s` / `C-r` / `C-l` prompts
 have NO completion: `C-s` reads the query one char at a time so Tab
 extends the query as a literal char; in the `C-r` / `C-l` input lines Tab
 is ignored by the inert completion handler (no candidate line is ever
-listed in any of the three).
+listed in any of the three). File candidates are listed in alphabetical
+order with directories ending in `/`; `~` expands to `$HOME` in the file
+prompts; Tab with no match rings the bell.
 
 | Key | Command |
 |-----|---------|

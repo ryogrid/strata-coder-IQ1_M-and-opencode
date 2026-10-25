@@ -178,6 +178,9 @@ fn main() {
                 msg = "".to_string();
             } else if n == 0x06 { // Ctrl-x Ctrl-f: open file; in a lone window split below, in a split tree load into the active window
                 let path = terminal::read_line_files("Find file: ");
+                // T-8: ~ expands to $HOME BEFORE matching/loading, so
+                // buffer names (and C-x C-s targets) are real paths.
+                let path = terminal::expand_tilde(path);
                 if !path.is_empty() {
                     // M-6: an already-open file REUSES its buffer (Emacs
                     // find-file). Matching is by buffer name (= path at load,
@@ -226,6 +229,7 @@ fn main() {
                 }
             } else if n == 0x17 { // Ctrl-x Ctrl-w: write-file
                 let path = terminal::read_line_files("Write file: ");
+                let path = terminal::expand_tilde(path); // T-8
                 if !path.is_empty() {
                     // M-8: the filename binds ONLY on success; a failed
                     // write leaves save-target (and C-x C-s) untouched.
@@ -239,6 +243,7 @@ fn main() {
                 }
             } else if n == 0x09 { // Ctrl-x Ctrl-i: insert-file
                 let path = terminal::read_line_files("Insert file: ");
+                let path = terminal::expand_tilde(path); // T-8
                 if !path.is_empty() {
                     match read_file(path.to_string()) {
                         Ok(text) => {

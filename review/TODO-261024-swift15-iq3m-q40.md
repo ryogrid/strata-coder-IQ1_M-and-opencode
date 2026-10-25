@@ -111,7 +111,17 @@
   → read_line_c の補充分岐に `hits.is_empty()` で `\x07`(BEL)追記。pty プロブで分離確認:
   無候補 Tab=新ベルあり/旧無音、1 候補 Tab=ベルなし+サフィックス echo 継続(fix #22)
 - [x] **T-7**: list_width/cand_at の当たり判定が文字数基準(CJK 候補でズレ)。セル数基準へ(Design Doc C と同時)。04 §T-7 → `cells_of` 追加、`list_width`/`cand_at` はセル合計、`read_line_c` の全 print!(キャレット配置/erase)は `caret_col`(二重単位の変換点を単関数に集約)経由へ。e2e s151(fix #8)
-- [ ] **T-8**: file_candidates: ディレクトリ末尾 `/`、ソート、`~` 展開。04 §T-8
+- [x] **T-8**: file_candidates: ディレクトリ末尾 `/`、ソート、`~` 展開。04 §T-8
+  → `file_candidates`: 候補を `cands.sort()`(read_dir 順の露出を排除、Emacs の
+  辞書順一覧に合わせる)。dir エントリに末尾 `/` を付与(`DirEntry::file_type` は
+  symlink を追わない: merged-usr の `/bin` はスラッシュ無しで一覧=仕様)。
+  `expand_tilde` 新設(`~` と `~/...` のみ `$HOME` 展開、`~user` はリテラル)を
+  fs 側 dir に適用、一覧エコーは入力 head を保持。`dir==""`(入力 `/...`)は
+  `read_dir("")` が常に失敗していたので `/` に写す(fix #22 ゲート Minor-1 の
+  follow-up)。main.rs の C-x C-f/C-x C-w/C-x C-i プロンプトで `expand_tilde`
+  (バファ名・保存先は実パスになる)。unit 2 件(sort+slash+root と tilde 規則)、
+  e2e s157(辞書順)/s158(dir スラッシュ+EISDIR 失敗)/s159(`~/emur` Tab で
+  $HOME のファイルを開く)/s160(`/` Tab で ` /usr/` 一覧)(fix #24)
 - [x] **T-9**: VMIN/VTIME 明示設定。04 §T-9
   → save_raw_mode で `c_cc[VMIN]=1`/`c_cc[VTIME]=0` を明示(環境継承に依存しないblocking 1 バイト読み)。フル e2e 全入力経路が回帰網(fix #22)
 - [ ] **T-11**: print+flush 出力ヘルパー集約。04 §T-11
@@ -582,7 +592,7 @@
   dir="" を read_dir("") と呼ぶため元々無一覧(既存欠陥)。新ベルが正しく鳴る。
   T-8 で dir 空文字を `/` に写して一覧化を担保(fix #22 ゲート由来の follow-up)。
   (fix #22 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #23(このコミット)**: S-5/S-8/H-7(型整理 3 件、挙動・出力 byte 同一)。
+- 2026-10-25: **fix #23(コミット 44fbacd)**: S-5/S-8/H-7(型整理 3 件、挙動・出力 byte 同一)。
   S-5=`Frame` を enum 化(Window/BoundaryRow/BoundaryCol)。境界の dummy `leaf:0` と
   magic `kind:0/1/2` を消去、境界の定数フィールド(Row.height=1/Col.width=1)も削除で
   dead-code 警告を字段除去で解消(`#[allow]` 不使用)。screen.rs prepass/draw は match
@@ -601,3 +611,24 @@
   `..` 除去=意味論不変(ゲートが byte-strip 同一で検証)、追加の描画 probe
   (C-x 2/C-x 3 境界行・列・collapse)PASS。
   (fix #23 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #24(このコミット)**: T-8(file 補完の細部 3 点+root 一覧)。
+  `file_candidates` に (1) `cands.sort()` で辞書順(read_dir 順の露出を排除)、
+  (2) dir エントリへ末尾 `/`(`DirEntry::file_type` は symlink を追わないため
+  merged-usr の `/bin` はスラッシュ無し=仕様。unit/e2e は実 dir の `/usr` で検証)、
+  (3) `expand_tilde` 新設で fs 側 dir を展開(`~` と `~/...` のみ、`~user` は
+  リテラル。一覧エコーは入力 head を保持するので `~/emur`+Tab は `~/emur-t8-...`
+  と続く)、(4) `dir==""` を `/` に写して root 一覧(fix #22 ゲート Minor-1)。
+  補間の prefix フィルタは素名 vs tail のまま(`completions()` が全文を全文と
+  再検査して一致。full 文字列比較へ寄せると `~/emor` 型の入力が壊れる。
+  デバッグで `cands=0` の原因はテスト側のタイポ `~/emor` と判定、実装は素名比較に据え置き)。
+  main.rs は C-x C-f/C-x C-w/C-x C-i の入力直後に `expand_tilde`(バファ名/保存先は実パス)。
+  unit 2 件追加(sort/dir slash/root の `/usr/`/tilde 規則)=38/38、e2e s157-s160
+  登録(89 シナリオ)。s160 は一覧トークンが head の `/` を保つため pattern は
+  `' /usr/'`(先頭スラッシュ必須。`' usr/'` は永久に一致せず)。s159 は file 名
+  `emur-t8-marker.txt` に対し入力が `~/emor` のタイポで FAIL していた(実装不具合なし)。
+  旧バイナリ(44fbacd worktree)で s157-s160 全 FAIL の分離確認済み(旧は readdir 順・
+  スラッシュ無し・`~` リテラル・root 無一覧)。README/keybindings.md に一覧順/
+  dir `/`/`~` 展開/ベル/EISDIR 失敗を追記。ゲート APPROVE 後コミット。
+  証拠=unit 38/38・build/clippy `--all-targets` 0・`RUSTFLAGS=-D warnings --locked
+  --all-targets` rc0・フル e2e 89/89(run31)+release smoke 6/6(rs19)。
+  (fix #24 のコミットハッシュは次エントリに記載)

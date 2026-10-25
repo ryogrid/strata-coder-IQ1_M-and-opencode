@@ -108,7 +108,11 @@ Run the editor from a real terminal:
 - **Minibuffer and Tab completion** — file paths, buffer names and search/
   goto queries are typed in the bottom-row minibuffer (Tab completion works
   in path and buffer-name prompts; see Key bindings; the `C-s`/`C-r`/`C-l`
-  prompts are plain input with NO completion). When Tab lists
+  prompts are plain input with NO completion). File-prompt listings are
+  sorted alphabetically, directories show a trailing `/`, and `~` expands
+  to `$HOME` (`C-x C-f` / `C-x C-w` / `C-x C-i`; opening a DIRECTORY
+  reports a failure - there is no directory listing). Tab rings the
+  terminal bell when NO completion matches. When Tab lists
   several candidates they are echoed after the input: the arrow keys (or
   `C-b`/`C-f`, plus `C-a`/`C-e`) move the cursor over the echoed line, and
   Enter on one of the listed candidates selects it; Enter elsewhere

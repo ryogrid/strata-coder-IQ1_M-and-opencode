@@ -225,7 +225,33 @@ pub fn common_prefix(list: Vec<String>) -> String {
 
 // Path candidates from the filesystem: completes the tail after the last '/'
 // against entries of the directory part ('.' when no '/' typed).
+// T-8: expand a leading ~ to $HOME (exactly "~" or "~/rest"; "~user"
+// notation is NOT supported and stays literal). Returns the input
+// unchanged when it does not start with ~, when HOME is unset, or when
+// HOME is empty. Used by the file prompts (open/write/insert) and by
+// the completion listing (fs side only: the echo keeps the user's ~ so
+// the candidate strings keep the typed prefix).
+pub fn expand_tilde(s: String) -> String {
+    if !s.starts_with('~') {
+        return s;
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    if home.is_empty() {
+        return s;
+    }
+    if s == "~" {
+        return home;
+    }
+    if s[1..].starts_with('/') {
+        return format!("{}{}", home, &s[1..]);
+    }
+    s
+}
+
 pub fn file_candidates(input: String) -> Vec<String> {
+    // T-8: "~" alone means the home dir: treat it as "~/" so the listing
+    // (fs side) works and candidates echo as "~/name".
+    let input = if input == "~" { "~/".to_string() } else { input };
     let cs = chars_of(input);
     let mut slash = 0;
     let mut i = 0;
@@ -255,11 +281,19 @@ pub fn file_candidates(input: String) -> Vec<String> {
             k += 1;
         }
         dir = str_of(hd);
+        // T-8 (gate Minor-1 from fix #22): input "/..." gives the empty
+        // head-trim; read_dir("") always fails -> map to the root.
+        if dir.is_empty() {
+            dir = "/".to_string();
+        }
     }
+    // T-8: the fs side expands ~; head_s (echo/candidate prefix) keeps
+    // the typed text so candidates match the input prefix.
+    let fs_dir = expand_tilde(dir);
     let tail_s = str_of(tail);
     let head_s = str_of(head);
     let mut cands: Vec<String> = vec![];
-    if let Ok(rd) = std::fs::read_dir(dir) {
+    if let Ok(rd) = std::fs::read_dir(fs_dir) {
         for e in rd.flatten() {
             if let Some(fp) = e.path().to_str() {
                 let fps = fp.to_string();
@@ -278,13 +312,24 @@ pub fn file_candidates(input: String) -> Vec<String> {
                     nm.push(pcs[k]);
                     k += 1;
                 }
+                // T-8: directories get a trailing '/' so the suffix echo
+                // lands the user right where the next Tab continues.
+                let isdir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                let suffix = if isdir { "/" } else { "" };
                 let nms = str_of(nm);
+
+                // the prefix filter tests the BARE NAME against the tail
+                // (head-agnostic; completions() re-checks the full string
+                // against the full input, and the two agree)
                 if has_prefix(nms.clone(), tail_s.clone()) {
-                    cands.push(format!("{}{}", head_s, nms));
+                    cands.push(format!("{}{}{}", head_s, nms, suffix));
                 }
             }
         }
     }
+    // T-8: read_dir order is filesystem-dependent (s133/s151 saw it);
+    // Emacs lists completions alphabetically -> sort.
+    cands.sort();
     cands
 }
 
@@ -636,5 +681,45 @@ fn caret_col_units() {
     let m: Vec<char> = "a\u{0301}\u{0301}\u{0301}".chars().collect(); // 4 chars, 1 cell
     assert!(caret_col(0, &m, 4) == 1);
     assert!(caret_col(0, &m, 1) == 1); // caret after base, before marks
+}
+#[test]
+fn file_candidates_sorted_dirs_slashed_root_lists() {
+    // T-8: alphabetical order (read_dir order must not leak), dirs get
+    // a trailing '/', and "/..." inputs list the root (no read_dir("")).
+    let d = "/tmp/emur-unit-t8";
+    let _ = std::fs::remove_dir_all(d);
+    std::fs::create_dir_all(d).unwrap();
+    // creation order b, a, sub-z: a sorted list proves the sort.
+    std::fs::write(format!("{}/b.txt", d), "b\n").unwrap();
+    std::fs::write(format!("{}/a.txt", d), "a\n").unwrap();
+    std::fs::create_dir(format!("{}/sub-z", d)).unwrap();
+    let c = file_candidates(format!("{}/", d));
+    assert!(c == vec![
+        format!("{}/a.txt", d),
+        format!("{}/b.txt", d),
+        format!("{}/sub-z/", d),
+    ]);
+    // prefix filter keeps the tail match, dirs included
+    let c2 = file_candidates(format!("{}/sub", d));
+    assert!(c2 == vec![format!("{}/sub-z/", d)]);
+    // root: the old head-trim produced read_dir("") -> EMPTY pool; now
+    // the root lists and directories carry their slash. /usr is a REAL
+    // dir on every Linux (merged-usr distros ship /bin as a symlink,
+    // DirEntry::file_type does NOT follow: /bin lists WITHOUT a slash)
+    let r = file_candidates("/".to_string());
+    assert!(r.iter().any(|x| x == "/usr/"));
+    let _ = std::fs::remove_dir_all(d);
+}
+#[test]
+fn expand_tilde_rules() {
+    // T-8: only "~" and "~/.." expand; "~user" stays literal
+    let home = std::env::var("HOME").unwrap_or_default();
+    assert!(expand_tilde("/x/y".to_string()) == "/x/y");
+    assert!(expand_tilde("~user/x".to_string()) == "~user/x");
+    assert!(expand_tilde("a~b".to_string()) == "a~b");
+    if !home.is_empty() {
+        assert!(expand_tilde("~".to_string()) == home);
+        assert!(expand_tilde("~/x".to_string()) == format!("{}/x", home));
+    }
 }
 }
