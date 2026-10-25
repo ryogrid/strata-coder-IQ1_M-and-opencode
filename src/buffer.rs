@@ -553,4 +553,45 @@ fn transpose_chars_noop_at_start() {
     assert!(b.text() == "ba");
     assert!(b.point == 2);
 }
+#[test]
+fn movement_clamps_at_line_edges() {
+    // B-9: line-boundary moves clamp, never run off the buffer
+    let mut b = Buffer::new("t", "ab\nc\n"); // a0 b1 \n2 c3 \n4
+    b.beginning_of_line();
+    assert!(b.point == 0); // line 1 start: no-op
+    b.end_of_line();
+    assert!(b.point == 2); // sits ON the newline
+    b.next_line();
+    assert!(b.point == 4); // col 2 clamped to the SHORT line 2 end
+    b.next_line();
+    assert!(b.point == 5); // trailing empty line 3
+    b.next_line();
+    assert!(b.point == 5); // already on the last line: no move
+    b.beginning_of_line();
+    assert!(b.point == 5);
+    b.previous_line();
+    assert!(b.point == 3); // col 0 lands on the 'c' row
+    b.previous_line();
+    assert!(b.point == 0); // col 0 to line 1
+}
+#[test]
+fn transpose_at_end_no_advance() {
+    // B-9 boundary: point AT the buffer end swaps the last two, NO advance
+    let mut b = Buffer::new("t", "ab");
+    b.point = 2;
+    b.transpose_chars();
+    assert!(b.text() == "ba");
+    assert!(b.point == 2);
+}
+#[test]
+fn empty_buffer_edge_edits() {
+    // B-9: empty buffer: deletes report false, kill yields "", C-t no-op
+    let mut b = Buffer::new("t", "");
+    assert!(!b.delete_forward());
+    assert!(!b.delete_backward());
+    assert!(b.kill_to_end_of_line() == "");
+    assert!(b.text() == "");
+    b.transpose_chars();
+    assert!(b.point == 0);
+}
 }

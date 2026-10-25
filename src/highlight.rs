@@ -296,6 +296,10 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             continue;
         }
         if lang == 5 && c == '<' && i + 1 < n && hletter(cs[i + 1]) {
+            // H-6: the WHOLE tag span paints as tag style (5), so
+            // attribute strings inside it (`<a href="x">`) never become
+            // string style (2) - the scan consumes to '>' before the
+            // string branch can see the quote. Cosmetics only, by design.
             let mut j = i + 1;
             while j < n && cs[j] != '>' {
                 j += 1;
@@ -312,11 +316,33 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             continue;
         }
         if hdigit(c) {
+            // H-5: letters join a number token ONLY inside a 0x.. hex
+            // literal (the 'x' must sit right after a leading '0').
+            // The old scan consumed any a-f/A-F anywhere, painting
+            // digit+word tokens like `2face` fully as a number.
+            // Kept/covered: 0x1F, 0xDEADbeef, 0b101, 1.2, 1..2, and
+            // exponents 1e6 / 12.3e4 / 1e-3 (an e/E joins only when a
+            // DIGIT follows, directly or after one sign, so `2e` stays
+            // '2' + plain). Rust float/int SUFFIXES (1.0f32, 2u8) are
+            // NOT re-admitted: they are indistinguishable from the
+            // 2face over-decoration pattern, so they stay under-painted
+            // (cosmetic; the old scan "painted" them by the same bug).
             let mut j = i;
+            let mut has_x = false;
             while j < n {
                 let d = cs[j];
                 let hexc = ('a'..='f').contains(&d) || ('A'..='F').contains(&d);
-                if hdigit(d) || d == '.' || d == 'x' || d == 'X' || hexc {
+                let expdigit = j + 1 < n && hdigit(cs[j + 1]);
+                let expsign = j + 2 < n
+                    && (cs[j + 1] == '+' || cs[j + 1] == '-')
+                    && hdigit(cs[j + 2]);
+                if (d == 'x' || d == 'X' || d == 'b' || d == 'B') && j == i + 1 && cs[i] == '0' {
+                    has_x = d == 'x' || d == 'X';
+                    j += 1;
+                } else if hdigit(d) || d == '.'
+                    || (hexc && has_x)
+                    || ((d == 'e' || d == 'E') && !has_x && (expdigit || expsign))
+                {
                     j += 1;
                 } else {
                     break;
@@ -405,5 +431,40 @@ mod tests {
         let st = styles(&cs, 4);
         assert!(st[0] == 5);
         assert!(st[8] == 5); // the '-' marker of "- item"
+    }
+    #[test]
+    fn md_unclosed_code_span_stops_at_line_end() {
+        // H-4: an UNCLOSED ` span paints to end-of-line only: the next
+        // line must not be swallowed.
+        let cs: Vec<char> = "a `bc\nd\n".chars().collect();
+        let mut st = vec![0usize; cs.len()];
+        md_styles(&cs, &mut st);
+        assert!(st[2] == 2 && st[3] == 2 && st[4] == 2); // `bc to EOL
+        assert!(st[5] == 0); // the newline stays plain
+        assert!(st[6] == 0); // NEXT line untouched
+    }
+    #[test]
+    fn number_scan_letters_only_after_0x() {
+        // H-5: letters join a number ONLY inside 0x.. hex; exponents
+        // join when a digit follows e/E (directly or after one sign).
+        let s1 = styles(&"2face".chars().collect::<Vec<char>>(), 1);
+        assert!(s1[0] == 4 && s1[1] == 0); // '2' is the number, face plain
+        let s2 = styles(&"0x1F".chars().collect::<Vec<char>>(), 1);
+        assert!(s2.iter().all(|&x| x == 4));
+        let s3 = styles(&"1.2".chars().collect::<Vec<char>>(), 1);
+        assert!(s3.iter().all(|&x| x == 4));
+        let s4 = styles(&"1e6".chars().collect::<Vec<char>>(), 1);
+        assert!(s4.iter().all(|&x| x == 4)); // exponent restored
+        let s5 = styles(&"12.3e4".chars().collect::<Vec<char>>(), 1);
+        assert!(s5.iter().all(|&x| x == 4));
+        let s6 = styles(&"1e-3 x".chars().collect::<Vec<char>>(), 1);
+        assert!(s6[0] == 4 && s6[1] == 4); // "1e" painted (e joins via sign+digit)
+        assert!(s6[2] == 0); // the sign itself never paints (same as the old scan)
+        assert!(s6[3] == 4); // the exponent's digits paint as their own number
+        assert!(s6[4] == 0 && s6[5] == 0); // space and x are plain
+        let s7 = styles(&"0b101".chars().collect::<Vec<char>>(), 1);
+        assert!(s7.iter().all(|&x| x == 4)); // binary literal restored
+        let s8 = styles(&"2e".chars().collect::<Vec<char>>(), 1);
+        assert!(s8[0] == 4 && s8[1] == 0); // dangling e: '2' only
     }
 }

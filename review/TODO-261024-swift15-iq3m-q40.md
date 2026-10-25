@@ -66,7 +66,8 @@
   → 点=0 分岐を削除(no-op 化)。unit transpose_chars_noop_at_start・e2e s156(点 0 で no-op/点 2 で h↔i swap、HEAD worktree 2/2 FAIL・新 3/3 PASS、README/keybindings に no-op 明記、fix #18)
 - [x] **B-6**: 「編集で領域が消える(mark 追従)」を README に明文化。01 §B-6
   → README Region 条項に「挿入(入力/C-j/C-m/C-o/C-y)と backspace は mark を点へ動かし領域消去、C-@ で張り直し。C-d/C-k は領域維持」を追記(コード実測:insert_char/insert_newline_after/delete_backward の 3 箇所のみ mark=point、fix #18)
-- [ ] **B-9**: buffer の find/クランプ/move_gap 単体テスト追加。01 §B-9 → (部分)find/gap/move_gap(挿入経路)/insert_newline_after は fix #2 で追加済。クランプ系は e2e s112/s141 が担保。残り: line_start/line_end 境界の unit
+- [x] **B-9**: buffer の find/クランプ/move_gap 単体テスト追加。01 §B-9 → (部分)find/gap/move_gap(挿入経路)/insert_newline_after は fix #2 で追加済。クランプ系は e2e s112/s141 が担保。残り: line_start/line_end 境界の unit
+  → 残り実施(fix #21):movement_clamps_at_line_edges(beginning/end_of_line・next/previous_line のクランプと最終行停止)、transpose_at_end_no_advance(末尾=直前 2 文字 swap・point 不動)、empty_buffer_edge_edits(空で delete 偽/kill 空/C-t no-op)
 - [x] **B-10**: `self: &Buffer` → `&self`、String 引数 → `&str`/`Into<String>`。01 §B-10
   - buffer.rs: 全 29 メソッドの receivers を `&self`/`&mut self` に(extern-style 廃止)。
     `Buffer::new(name/text: impl Into<String>` にし literal 呼び出しの `.to_string()` を
@@ -105,9 +106,17 @@
 - [ ] **T-8**: file_candidates: ディレクトリ末尾 `/`、ソート、`~` 展開。04 §T-8
 - [ ] **T-9**: VMIN/VTIME 明示設定。04 §T-9
 - [ ] **T-11**: print+flush 出力ヘルパー集約。04 §T-11
-- [ ] **H-4**: md_styles 未閉結バッククォートのテスト追加。05 §H-4
-- [ ] **H-5**: 数値スキャン過装飾(2hex)の軽微修正/注記。05 §H-5
-- [ ] **H-6**: HTML タグ内属性文字列の装飾(注記)。05 §H-6
+- [x] **H-4**: md_styles 未閉結バッククォートのテスト追加。05 §H-4
+  → unit md_unclosed_code_span_stops_at_line_end:未閉結 ` は行末まで装飾し次行を巻き込まないことをアサート(fix #21)
+- [x] **H-5**: 数値スキャン過装飾(2hex)の軽微修正/注記。05 §H-5
+  → 修正採用(fix #21):数値トークンの英字は `0x` 直後(x は先頭数字の次・先頭が 0)でのみ受理。`2face`→`2` のみ装飾/`0x1F`・`0xDEADbeef`・`1.2` は従来どおり。unit number_scan_letters_only_after_0x 追加(finding の `2hex` は 'h' で既に停止する例。実過装飾は 2face 型)
+  - ゲート Major-1 対応:指数 `1e6`/`12.3e4`/`1e-3`(e/E は直後が数字、または符号+数字
+    のときのみ合流。`2e` は `2` のみ)と `0b101`(0 直後の b)を復元。Rust の
+    数値サフィックス(`1.0f32`/`2u8`)は 2face パターンと区別不能のため意図的に
+    非受理(=旧 scan は過装飾で塗っていた、コメントに明記)。unit に指数・二進・
+    符号付き指数・dangling e のケース追加
+- [x] **H-6**: HTML タグ内属性文字列の装飾(注記)。05 §H-6
+  → 注記採用(fix #21):tag スキャンが `<`→`>` まで style 5 で塗り属性の "x" は string(2) にならない(見た目のみ・設計どおり)とコメント明記
 - [ ] **H-7**: スタイルコードを enum 化。05 §H-7
 - [x] **H-8**: detect/styles の単体テスト追加。05 §H-8 → fix #2 で追加(detect 拡張子マトリクス、lifetime フィクスチャ、string/char リテラル、json、md)
 - [x] **R-5**: curses 依存縮小(size 検出のみ)/[profile] 注記。06 §R-5
@@ -516,7 +525,7 @@
   フル e2e 85/85・release 6/6=最終ツリーでコミット前に実行(/tmp/e2e_run24.out は
   B-10 単体・run26/rs14 は B-10+M-13 最終)。ゲートレビューはコミット前に実施。
   (fix #19 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #20(このコミット)**: 注記簇 S-6/S-7/S-9/S-12/T-5/M-12(コメントのみ、
+- 2026-10-25: **fix #20(コミット 0cf0597)**: 注記簇 S-6/S-7/S-9/S-12/T-5/M-12(コメントのみ、
   コード挙動不変)。S-6=scroll 毎フレーム再計算の不変条件、S-7=`rows-2` クランプの
   見かけ 1 行上説明、S-9=`Node.vertical` の向き注記(true=縦積み/false=横並び)、
   S-12=幅<2 同一ジオメトリ重なり容忍の設計、T-5=`save_raw_mode` の fd0 固定/非 tty
@@ -524,3 +533,14 @@
   `--all-targets` 0・unit 31/31(コメントのみでコード生成不変のため e2e 再実行は
   対象外。直前の 360c6b3 で CI=success・フル e2e 85/85=ランナー含め確認済み)。
   (fix #20 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #21(このコミット)**: 検査/装飾簇 B-9 残り・H-4・H-5・H-6。
+  B-9=unit 3 追加(movement クランプ境界/transpose 末尾/空バッファ編集)。
+  H-4=md 未閉結 ` が次行を巻き込まない unit。H-5=数値スキャン修正(英字は 0x の
+  直後だけ受理。`2face`→`2` のみ。`0x1F`/`0xDEADbeef`/`1.2` 不変)+unit。
+  H-6=HTML tag スキャンの設計注記(属性 string 化なしは意図的)。
+  clippy `--all-targets` 0(同一ブロック警告は条件マージで解消)・build 0・unit 36/36・
+  フル e2e 85/85・release 6/6=最終ツリーでコミット前実行(/tmp/e2e_run28.out・
+  /tmp/rs16.out。run27/rs15 は Major-1 対応前の中間版)。highlight e2e
+  シナリオ(s90-s94)は 10 進数値のみで hex 依存なし(スキャン変更に安全)。
+  ゲート APPROVE-WITH-CHANGES(Major-1=指数/二進の被装飾減少→復元で対応)。
+  (fix #21 のコミットハッシュは次エントリに記載)
