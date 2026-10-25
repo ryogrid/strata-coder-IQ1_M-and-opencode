@@ -172,10 +172,13 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
   数日間発生させた。原因は常に送信側、症状は受信側に現れる。
 - 2026-10-26(結合テスト実装):isearch の `last` はエントリ地点から
   開始し(main.rs:437)、ヒット後は**マッチ開始位置**(`end - q.len()`)
-  へ更新する(490/503)。模型が `end`(マッチ終端)を保持すると次の
+  へ更新する(503)。模型が `end`(マッチ終端)を保持すると次の
   文字の探索開始が 1 文字遅れ、`C-a` の line マーク規則と相まって
-  ステータス % が発散した。制御バイト(read_char_eof=None)は
-  **ループを抜ける**(skip ではない)。
+  ステータス % が発散した。なお `read_char_eof` は **EOF でしか
+  None を返さない**(terminal.rs:135-160):isearch 中の制御バイトは
+  query 文字として bell+破棄+続行であり、ループ終端ではない
+  (コードゲートで模型の break 実装を検出・修正。ASCII tail 到達
+  不能なのでテストは不変)。
 - 2026-10-26(結合テスト実装):「観察可能」がモデル比較の境界を決める。
   C-g 直後の `" [Cancelled]"` echo は全面再描画が即着くため**消滅
   一瞬**で poll でも捕まらない→mid 比較は C-g **前**の安定状態に切る。
@@ -270,6 +273,15 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
+- 2026-10-26: コードゲート(ミラー忠実度レビュー)=PASS・BLOCKER 0/Minor 7
+  全件織り込み:this commit。模型側修正=isearch 制御バイト arm を
+  本番実態へ(bell+破棄+続行。break は EOF のみ main.rs:488-490)、
+  ESC の 1 バイト無条件消費(452-465)、コメント実在順序修正(kill
+  tail=y,e,s,Enter 着順)、引用 490→503、file_candidates の CWD
+  arm 注記(production は dir="." 既定、模型は絶対パス pool で
+  非到達)、capture_poll 文書 4x 化、send_hex 空ベクトル assert
+  (tmux -H 法 05 §13)。再走:combination 全 25 緑 192.97s。
+  実装一式=コミット df47fbe(CI 走査中)。
 - 2026-10-26: 結合テスト(P5-P7)実装一式:this commit。`combination.rs`
   新規(support 3 層化 core/sess/sanity 併載:mod.rs 経由で tmux_fuzz は
   sanity を、combination は core+sess のみ+ローカル comb_sane を使用。

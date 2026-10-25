@@ -121,9 +121,11 @@ fn cand_at(list: &[String], inp: usize, cur: usize) -> String {
 // the pool (expand_tilde is a pass-through recorded in 02 §4).
 fn file_candidates(input: &str) -> Vec<String> {
     // mirror of terminal.rs:261-344: candidates = head + name (+ "/" for
-    // dirs) = FULL paths; input with NO '/' -> empty (production keeps
-    // dir "." only when input starts at a slash; the P6 pool always
-    // types absolute paths)
+    // dirs) = FULL paths. Production DEFAULTS the listing dir to "."
+    // (Tab on a slash-free input lists the CWD, terminal.rs:285-299);
+    // the model returns empty (bell) instead - the P5/P6 pools always
+    // type ABSOLUTE paths, so the CWD-listing arm is unreachable
+    // (recorded, 05 §14)
     let Some(k) = input.rfind('/') else { return vec![] };
     let dir = &input[..k + 1];
     let tail = &input[k + 1..];
@@ -1076,8 +1078,9 @@ impl M {
         let name = self.bufs[bi].name.clone();
         if !self.bufs[bi].modified {
             // NO prompt: proceed; the scripted answer is NOT consumed
-            // by a reader - it flows to the MAIN LOOP in send order
-            // (Enter, then y, e, s... on the FRESH buffer)
+            // by a reader - it flows to the MAIN LOOP in WIRE order
+            // (y, e, s, then Enter - the tail is built ans+0x0D),
+            // typing into the FRESH buffer, one command per byte
             self.kill_fresh(bi, &name);
             return echo_tail.to_vec();
         }
@@ -1198,7 +1201,7 @@ impl M {
                         .or_else(|| self.bufs[bi].find_forward(&q, 0));
                     if let Some(end) = hit {
                         self.bufs[bi].point = end;
-                        last = end - qs.len(); // main.rs:490 (match START)
+                        last = end - qs.len(); // main.rs:503 (shared hit arm)
                     }
                 }
                 continue;
@@ -1218,27 +1221,38 @@ impl M {
                 continue;
             }
             if b == 0x1b {
-                // ESC accepts AND swallows one arrow (447-467)
-                if i + 1 < tail.len() && tail[i] == 0x5b {
-                    let t = tail[i + 1];
-                    match t {
-                        0x41 => self.bufs[bi].previous_line(),
-                        0x42 => self.bufs[bi].next_line(),
-                        0x43 => self.bufs[bi].forward_char(),
-                        0x44 => self.bufs[bi].backward_char(),
-                        _ => {}
+                // ESC accepts. Production consumes ONE byte
+                // unconditionally (main.rs:452), and a THIRD only when
+                // the second is '[' (453-465: [A-D = arrows). The pools
+                // never put ESC in an isearch tail (05 §2), and ESC as
+                // the LAST tail byte would eat the next stdin byte in
+                // production - unrepresentable here, recorded.
+                if i < tail.len() {
+                    let n2 = tail[i];
+                    i += 1;
+                    if n2 == 0x5b && i < tail.len() {
+                        let t = tail[i]; // consumed here; the loop returns
+                        match t {
+                            0x41 => self.bufs[bi].previous_line(),
+                            0x42 => self.bufs[bi].next_line(),
+                            0x43 => self.bufs[bi].forward_char(),
+                            0x44 => self.bufs[bi].backward_char(),
+                            _ => {}
+                        }
                     }
                 }
                 self.msg = "".to_string();
                 return;
             }
-            if !(0x20..0x7f).contains(&b) {
-                // read_char_eof(b) == None for control bytes: the loop
-                // BREAKS (keeps the current match), main.rs:497-499
-                self.msg = "".to_string();
-                return;
-            }
             {
+                // Any other byte extends the query: read_char_eof
+                // returns None ONLY at EOF (terminal.rs:135-160), so a
+                // CONTROL byte is a query CHAR - find_forward against
+                // the printable pool misses -> bell, char DROPPED, loop
+                // CONTINUES (main.rs:493-513; the EOF break is 488-490,
+                // and this harness has no mid-tail EOF). UTF-8 lead
+                // byte continuation consumption (PBTF-007) is n/a: the
+                // isearch tails are ASCII (05 §2).
                 let mut attempt: Vec<char> = qs.clone();
                 attempt.push(b as char);
                 let q: String = attempt.iter().collect();
@@ -1341,7 +1355,8 @@ fn swb_name(m: &M, k: usize) -> String {
 // model effect of one prompt command: (reader selection, C-g flag) ->
 // bytes left to the MAIN LOOP (the kill command on an UNMODIFIED
 // buffer shows no prompt: the answer bytes echo-type into the FRESH
-// buffer, Enter first - production's byte order, main.rs kill_buffer)
+// buffer in WIRE order - y, e, s, Enter LAST (tails are built
+// ans+0x0D); production's byte order, main.rs kill_buffer)
 type ApplyFn = Box<dyn FnOnce(&mut M, String, bool) -> Vec<u8>>;
 
 pub struct PromptRun {

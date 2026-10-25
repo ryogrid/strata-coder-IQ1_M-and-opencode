@@ -100,6 +100,9 @@ impl Session {
     }
 
     pub fn send_hex(&self, bytes: &[u8]) {
+        // tmux `send-keys -H` with NO key args sends ENTER (05 §13):
+        // an empty byte list is a driver bug, never a no-op
+        assert!(!bytes.is_empty(), "send_hex called with 0 bytes on {}", self.name);
         let hexs: Vec<String> = bytes.iter().map(|b| format!("{:02x}", b)).collect();
         let mut args: Vec<&str> = vec!["send-keys", "-t", &self.name, "-H"];
         args.extend(hexs.iter().map(|s| s.as_str()));
@@ -137,7 +140,8 @@ impl Session {
         raw.lines().map(|l| l.trim_end()).collect::<Vec<_>>().join("\n")
     }
 
-    // Poll-capture helper (04 §4): retry the full capture 3x300ms.
+    // Poll-capture helper (04 §4 / 05 §8): 4 pred-check captures with
+    // 300 ms sleeps (final plain capture on miss = 5 captures total).
     pub fn capture_poll<F: Fn(&str) -> bool>(&self, pred: F) -> String {
         for _ in 0..4 {
             let c = self.capture();
