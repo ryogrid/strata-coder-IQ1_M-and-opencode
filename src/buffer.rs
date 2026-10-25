@@ -24,14 +24,17 @@ pub fn is_word_char(c: char) -> bool {
 const GAP: usize = 8192;
 
 impl Buffer {
-    pub fn new(name: String, text: String) -> Buffer {
+    // B-10: name/text accept anything String-shaped; callers pass &str
+    // literals and owned Strings directly (no .to_string() ceremony).
+    pub fn new(name: impl Into<String>, text: impl Into<String>) -> Buffer {
+        let text: String = text.into();
         let mut chars = text.chars().collect::<Vec<char>>();
         let n = chars.len();
         // Reserve the gap at the END: window [n, n+GAP), size GAP.
         // (gap_start = gap_end would be a size-0 gap: len() would inflate.)
         chars.resize(n + GAP, '\0');
         Buffer {
-            name,
+            name: name.into(),
             filename: None,
             modified: false,
             chars,
@@ -42,11 +45,11 @@ impl Buffer {
         }
     }
 
-    pub fn len(self: &Buffer) -> usize {
+    pub fn len(&self) -> usize {
         self.chars.len() - (self.gap_end - self.gap_start)
     }
 
-    pub fn to_index(self: &Buffer, pos: usize) -> usize {
+    pub fn to_index(&self, pos: usize) -> usize {
         if pos < self.gap_start {
             pos
         } else {
@@ -54,7 +57,7 @@ impl Buffer {
         }
     }
 
-    pub fn move_gap(self: &mut Buffer, pos: usize) {
+    pub fn move_gap(&mut self, pos: usize) {
         let target = self.to_index(pos);
         while self.gap_start > target {
             self.gap_start -= 1;
@@ -68,7 +71,7 @@ impl Buffer {
         }
     }
 
-    pub fn insert_char(self: &mut Buffer, c: char) {
+    pub fn insert_char(&mut self, c: char) {
         self.move_gap(self.point);
         if self.gap_start == self.gap_end {
             self.refill_gap(); // gap exhausted: widen in place at this point
@@ -81,7 +84,7 @@ impl Buffer {
     }
 
     // Insert s at point, advancing it (amortized O(len(s)) with the gap).
-    pub fn insert_string(self: &mut Buffer, s: &str) {
+    pub fn insert_string(&mut self, s: &str) {
         for c in s.chars() {
             self.insert_char(c);
         }
@@ -90,13 +93,13 @@ impl Buffer {
     // Widen the (empty) gap window at gap_start by splicing GAP padding in
     // place, pushing the right segment back. A per-char Vec::insert loop
     // would be O(n*GAP); tail resize would not put the gap at this point.
-    fn refill_gap(self: &mut Buffer) {
+    fn refill_gap(&mut self) {
         let gs = self.gap_start;
         self.chars.splice(gs..gs, std::iter::repeat_n('\0', GAP));
         self.gap_end = gs + GAP;
     }
 
-    pub fn delete_forward(self: &mut Buffer) -> bool {
+    pub fn delete_forward(&mut self) -> bool {
         self.move_gap(self.point);
         if self.gap_end < self.chars.len() {
             self.gap_end += 1;
@@ -107,7 +110,7 @@ impl Buffer {
         }
     }
 
-    pub fn delete_backward(self: &mut Buffer) -> bool {
+    pub fn delete_backward(&mut self) -> bool {
         if self.point == 0 {
             return false;
         }
@@ -119,29 +122,29 @@ impl Buffer {
         true
     }
 
-    pub fn char_at(self: &Buffer, pos: usize) -> char {
+    pub fn char_at(&self, pos: usize) -> char {
         self.chars[self.to_index(pos)]
     }
 
-    pub fn line_start(self: &Buffer, mut pos: usize) -> usize {
+    pub fn line_start(&self, mut pos: usize) -> usize {
         while pos > 0 && self.char_at(pos - 1) != '\n' {
             pos -= 1;
         }
         pos
     }
 
-    pub fn line_end(self: &Buffer, mut pos: usize) -> usize {
+    pub fn line_end(&self, mut pos: usize) -> usize {
         while pos < self.len() && self.char_at(pos) != '\n' {
             pos += 1;
         }
         pos
     }
 
-    pub fn line_column(self: &Buffer, pos: usize) -> usize {
+    pub fn line_column(&self, pos: usize) -> usize {
         pos - self.line_start(pos)
     }
 
-    pub fn forward_char(self: &mut Buffer) {
+    pub fn forward_char(&mut self) {
         if self.point < self.len() {
             let mut target = self.point + 1;
             if self.mark > self.point && self.mark <= self.line_end(self.point) {
@@ -154,7 +157,7 @@ impl Buffer {
         }
     }
 
-    pub fn backward_char(self: &mut Buffer) {
+    pub fn backward_char(&mut self) {
         if self.point > 0 {
             let mut target = self.point - 1;
             if self.mark < self.point && self.mark >= self.line_start(self.point) {
@@ -167,7 +170,7 @@ impl Buffer {
         }
     }
 
-    pub fn beginning_of_line(self: &mut Buffer) {
+    pub fn beginning_of_line(&mut self) {
         let ls = self.line_start(self.point);
         let mut target = ls;
         if self.mark != self.point && self.mark >= ls && self.mark < self.point {
@@ -176,7 +179,7 @@ impl Buffer {
         self.point = target;
     }
 
-    pub fn end_of_line(self: &mut Buffer) {
+    pub fn end_of_line(&mut self) {
         let le = self.line_end(self.point);
         let mut target = le;
         if self.mark != self.point && self.mark > self.point && self.mark <= le {
@@ -187,7 +190,7 @@ impl Buffer {
         self.point = target;
     }
 
-    pub fn next_line(self: &mut Buffer) {
+    pub fn next_line(&mut self) {
         let col = self.line_column(self.point);
         let lend = self.line_end(self.point);
         if lend < self.len() {
@@ -198,7 +201,7 @@ impl Buffer {
         }
     }
 
-    pub fn previous_line(self: &mut Buffer) {
+    pub fn previous_line(&mut self) {
         let ls = self.line_start(self.point);
         if ls > 0 {
             let col = self.line_column(self.point);
@@ -209,15 +212,15 @@ impl Buffer {
         }
     }
 
-    pub fn beginning_of_buffer(self: &mut Buffer) {
+    pub fn beginning_of_buffer(&mut self) {
         self.point = 0;
     }
 
-    pub fn end_of_buffer(self: &mut Buffer) {
+    pub fn end_of_buffer(&mut self) {
         self.point = self.len();
     }
 
-    pub fn insert_newline_after(self: &mut Buffer) {
+    pub fn insert_newline_after(&mut self) {
         self.move_gap(self.point);
         if self.gap_start == self.gap_end {
             self.refill_gap();
@@ -231,14 +234,14 @@ impl Buffer {
         self.modified = true;
     }
 
-    pub fn swap_at(self: &mut Buffer, i: usize) {
+    pub fn swap_at(&mut self, i: usize) {
         let a = self.to_index(i);
         let b = self.to_index(i + 1);
         self.chars.swap(a, b);
         self.modified = true;
     }
 
-    pub fn transpose_chars(self: &mut Buffer) {
+    pub fn transpose_chars(&mut self) {
         // B-5: Emacs C-t is a NO-OP at the buffer start (point 0): the
         // char AFTER point is not transposed with the one before it.
         if self.point > 0 {
@@ -251,7 +254,7 @@ impl Buffer {
         }
     }
 
-    pub fn kill_to_end_of_line(self: &mut Buffer) -> String {
+    pub fn kill_to_end_of_line(&mut self) -> String {
         let ls = self.line_start(self.point);
         let le = self.line_end(self.point);
         let hi = if self.mark > self.point && self.mark >= ls && self.mark <= le {
@@ -279,7 +282,7 @@ impl Buffer {
         }
     }
 
-    pub fn forward_word(self: &mut Buffer) {
+    pub fn forward_word(&mut self) {
         while self.point < self.len() && !is_word_char(self.char_at(self.point)) {
             self.point += 1;
         }
@@ -288,7 +291,7 @@ impl Buffer {
         }
     }
 
-    pub fn backward_word(self: &mut Buffer) {
+    pub fn backward_word(&mut self) {
         if self.point > 0 && is_word_char(self.char_at(self.point - 1)) {
             while self.point > 0 && is_word_char(self.char_at(self.point - 1)) {
                 self.point -= 1;
@@ -305,7 +308,7 @@ impl Buffer {
 
     // Scan with char_at (O(1) through the gap): no full text() copy per call
     // (B-2/B-4). Returns the match END position, as before.
-    pub fn find_forward(self: &Buffer, pat: &str, from: usize) -> Option<usize> {
+    pub fn find_forward(&self, pat: &str, from: usize) -> Option<usize> {
         let pchars: Vec<char> = pat.chars().collect();
         let m = pchars.len();
         if m == 0 || from + m > self.len() {
@@ -331,7 +334,7 @@ impl Buffer {
     }
 
     // Backward scan: returns the match START position, as before.
-    pub fn find_backward(self: &Buffer, pat: &str, from: usize) -> Option<usize> {
+    pub fn find_backward(&self, pat: &str, from: usize) -> Option<usize> {
         let pchars: Vec<char> = pat.chars().collect();
         let m = pchars.len();
         if m == 0 || m > self.len() || from == 0 {
@@ -362,7 +365,7 @@ impl Buffer {
         None
     }
 
-    pub fn text(self: &Buffer) -> String {
+    pub fn text(&self) -> String {
         let mut out: Vec<char> = vec![];
         out.extend(self.chars[0..self.gap_start].iter());
         out.extend(self.chars[self.gap_end..self.chars.len()].iter());
@@ -375,7 +378,7 @@ mod tests {
 use super::*;
 #[test]
 fn gap_buffer_roundtrip() {
-    let mut b = Buffer::new("t".to_string(), "hello".to_string());
+    let mut b = Buffer::new("t", "hello");
     b.point = 2;
     b.insert_char('X');
     assert!(b.text() == "heXllo");
@@ -387,7 +390,7 @@ fn gap_buffer_roundtrip() {
 }
 #[test]
 fn region_probe() {
-    let mut b = Buffer::new("t".to_string(), "one\ntwo22\nthree".to_string());
+    let mut b = Buffer::new("t", "one\ntwo22\nthree");
     assert!(b.mark == 0 && b.point == 0);
     b.next_line();
     assert!(b.point == 4);
@@ -397,7 +400,7 @@ fn region_probe() {
 }
 #[test]
 fn cursor_movement() {
-    let mut b = Buffer::new("t".to_string(), "one\ntwo22\nthree".to_string());
+    let mut b = Buffer::new("t", "one\ntwo22\nthree");
     b.point = 6;
     b.beginning_of_line();
     assert!(b.point == 4);
@@ -417,7 +420,7 @@ fn cursor_movement() {
 fn gap_prealloc_identity() {
     // Design Doc B / B-1: the gap window is pre-allocated at the END with
     // SIZE GAP (gap_start = n, gap_end = n + GAP), so len() stays exact.
-    let mut b = Buffer::new("t".to_string(), "hello".to_string());
+    let mut b = Buffer::new("t", "hello");
     assert!(b.text() == "hello");
     assert!(b.len() == 5);
     assert!(b.chars.len() == 5 + GAP);
@@ -431,7 +434,7 @@ fn gap_prealloc_identity() {
 fn gap_refill_amortized() {
     // Typing at the front slides the pre-allocated gap once, then inserts
     // are O(1); at exhaustion the gap is re-widened IN PLACE at the point.
-    let mut b = Buffer::new("t".to_string(), "hello".to_string());
+    let mut b = Buffer::new("t", "hello");
     for k in 0..(GAP + 3) {
         b.insert_char(char::from(b'a' + (k % 26) as u8));
         assert!(b.chars.len() - b.len() <= GAP); // never widens past GAP
@@ -443,11 +446,11 @@ fn gap_refill_amortized() {
 fn c_o_fresh_and_refill_boundary() {
     // F-4: the old Vec::insert branch of insert_newline_after lacked
     // gap_start += 1, swallowing the '\n' into the gap (silent C-o no-op).
-    let mut b = Buffer::new("t".to_string(), "one\ntwo".to_string());
+    let mut b = Buffer::new("t", "one\ntwo");
     b.point = 3;
     b.insert_newline_after(); // fresh buffer: pre-allocated gap covers it
     assert!(b.text() == "one\n\ntwo");
-    let mut c = Buffer::new("t".to_string(), "abc".to_string());
+    let mut c = Buffer::new("t", "abc");
     c.end_of_buffer();
     for _ in 0..GAP {
         c.insert_char('x'); // consume the whole gap at the tail
@@ -459,7 +462,7 @@ fn c_o_fresh_and_refill_boundary() {
 }
 #[test]
 fn find_matrix() {
-    let b = Buffer::new("t".to_string(), "hello hello".to_string());
+    let b = Buffer::new("t", "hello hello");
     assert!(b.find_forward("hello", 0) == Some(5));
     assert!(b.find_forward("hello", 1) == Some(11));
     assert!(b.find_forward("hello", 7).is_none());
@@ -471,7 +474,7 @@ fn find_matrix() {
     assert!(b.find_backward("hello", 0).is_none());
     assert!(b.find_backward("x", 5).is_none());
     // the gap must not distort scans: edit, then search the edited text
-    let mut m = Buffer::new("t".to_string(), "hello hello".to_string());
+    let mut m = Buffer::new("t", "hello hello");
     m.point = 5;
     m.insert_char('!');
     assert!(m.find_forward("o! ", 0) == Some(7));
@@ -479,7 +482,7 @@ fn find_matrix() {
 }
 #[test]
 fn insert_string_advances_point() {
-    let mut b = Buffer::new("t".to_string(), "ab".to_string());
+    let mut b = Buffer::new("t", "ab");
     b.point = 1;
     b.insert_string("xy");
     assert!(b.text() == "axyb");
@@ -488,7 +491,7 @@ fn insert_string_advances_point() {
 }
 #[test]
 fn editing_and_navigation() {
-    let mut b = Buffer::new("t".to_string(), "hello big world".to_string());
+    let mut b = Buffer::new("t", "hello big world");
     b.point = 2;
     b.forward_word();
     assert!(b.point == 5);
@@ -520,7 +523,7 @@ fn editing_and_navigation() {
 #[test]
 fn kill_backward_mark_kills_to_eol() {
     // B-3: a mark BEHIND the point must not turn C-k into a no-op.
-    let mut b = Buffer::new("t".to_string(), "hello world\nx\n".to_string());
+    let mut b = Buffer::new("t", "hello world\nx\n");
     b.point = 6; // 'w' of world; mark BEHIND on the line
     b.mark = 0;
     let cut = b.kill_to_end_of_line();
@@ -532,7 +535,7 @@ fn kill_backward_mark_kills_to_eol() {
     assert!(cut2 == "\n");
     assert!(b.text() == "hello x\n");
     // a forward mark still stops the kill at the region edge
-    let mut c = Buffer::new("t".to_string(), "abcdef\n".to_string());
+    let mut c = Buffer::new("t", "abcdef\n");
     c.point = 1;
     c.mark = 3;
     assert!(c.kill_to_end_of_line() == "bc");
@@ -541,7 +544,7 @@ fn kill_backward_mark_kills_to_eol() {
 #[test]
 fn transpose_chars_noop_at_start() {
     // B-5: C-t at point 0 does NOTHING (Emacs); mid-buffer swaps + advances
-    let mut b = Buffer::new("t".to_string(), "ab".to_string());
+    let mut b = Buffer::new("t", "ab");
     b.transpose_chars();
     assert!(b.text() == "ab");
     assert!(b.point == 0);

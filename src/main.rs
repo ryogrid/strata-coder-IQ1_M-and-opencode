@@ -35,18 +35,30 @@ fn find_buffer(bufs: &[buffer::Buffer], name: String) -> Vec<usize> {
 fn show_buffer(tree: &mut window::Tree, active: &mut usize, nb: usize) {
     if tree.leaves.len() == 1 {
         tree.split(*active, true);
-        let copy_idx = tree.leaves.len() - 1;
-        tree.leaves[copy_idx].buffer = nb;
-        tree.leaves[copy_idx].point = 0;
-        tree.leaves[copy_idx].mark = 0;
-        tree.leaves[copy_idx].scroll = 0;
-        *active = copy_idx;
+        *active = tree.leaves.len() - 1;
+        attach_leaf(tree, *active, nb);
     } else {
-        tree.leaves[*active].buffer = nb;
-        tree.leaves[*active].point = 0;
-        tree.leaves[*active].mark = 0;
-        tree.leaves[*active].scroll = 0;
+        attach_leaf(tree, *active, nb);
     }
+}
+
+// M-13: write the live buffer positions back into the ACTIVE leaf's
+// per-leaf display cache (each leaf caches its own point/mark: split
+// leaves aliasing one buffer may sit at different positions; C-x k
+// resets ALL aliases - M-15). Used by C-x o (before cycling) and the
+// loop-bottom sync of ordinary commands.
+fn sync_leaf(tree: &mut window::Tree, bufs: &[buffer::Buffer], active: usize, bi: usize) {
+    tree.leaves[active].point = bufs[bi].point;
+    tree.leaves[active].mark = bufs[bi].mark;
+}
+
+// M-13: attach buffer nb to leaf `li` with fresh per-leaf positions.
+// Used by the C-x b switch paths and both show_buffer branches.
+fn attach_leaf(tree: &mut window::Tree, li: usize, nb: usize) {
+    tree.leaves[li].buffer = nb;
+    tree.leaves[li].point = 0;
+    tree.leaves[li].mark = 0;
+    tree.leaves[li].scroll = 0;
 }
 
 // Quit confirmation (Emacs: "Modified buffers exist; exit anyway? (yes|no)"):
@@ -64,7 +76,7 @@ fn confirm_exit(bufs: &[buffer::Buffer]) -> bool {
     if !dirty {
         return true;
     }
-    let sel = terminal::read_line_eof("Modified buffers exist; exit anyway? (yes|no) ".to_string(), vec![], false);
+    let sel = terminal::read_line_eof("Modified buffers exist; exit anyway? (yes|no) ", vec![], false);
     match sel {
         None => true, // EOF: no input possible, exit with data loss
         Some(s) => s == "yes" || s == "y",
@@ -81,18 +93,18 @@ fn main() {
     terminal::install_restore_signals();
     let args: Vec<String> = std::env::args().collect();
     let mut msg = "".to_string();
-    let mut bufs = vec![buffer::Buffer::new("*demo*".to_string(), "This is the first line\nof the demo buffer.\n".to_string())];
+    let mut bufs = vec![buffer::Buffer::new("*demo*", "This is the first line\nof the demo buffer.\n")];
     if args.len() > 1 {
         let path = args[1].to_string();
         match read_file(path.to_string()) {
             Ok(text) => {
-                bufs[0] = buffer::Buffer::new(path.to_string(), text);
-                bufs[0].filename = Some(path.to_string());
+                bufs[0] = buffer::Buffer::new(path.clone(), text);
+                bufs[0].filename = Some(path);
             }
             Err(e) => {
                 // M-9: report the error; the buffer stays EMPTY with NO
                 // filename, so C-x C-s cannot clobber the unreadable file.
-                bufs[0] = buffer::Buffer::new(path.to_string(), "".to_string());
+                bufs[0] = buffer::Buffer::new(path.clone(), "");
                 msg = format!("Failed to open {}: {}", path, e);
             }
         }
@@ -143,8 +155,7 @@ fn main() {
                 tree.split(active, false);
                 msg = "".to_string();
             } else if n == 0x6f { // Ctrl-x o: other-window
-                tree.leaves[active].point = bufs[bi].point;
-                tree.leaves[active].mark = bufs[bi].mark;
+                sync_leaf(&mut tree, &bufs, active, bi);
                 let order = tree.flatten();
                 let mut j = 0;
                 while j < order.len() {
@@ -161,7 +172,7 @@ fn main() {
                 moved = true;
                 msg = "".to_string();
             } else if n == 0x06 { // Ctrl-x Ctrl-f: open file; in a lone window split below, in a split tree load into the active window
-                let path = terminal::read_line_files("Find file: ".to_string());
+                let path = terminal::read_line_files("Find file: ");
                 if !path.is_empty() {
                     // M-6: an already-open file REUSES its buffer (Emacs
                     // find-file). Matching is by buffer name (= path at load,
@@ -186,7 +197,7 @@ fn main() {
                             }
                             Ok(text) => {
                                 let nb = bufs.len();
-                                bufs.push(buffer::Buffer::new(path.to_string(), text));
+                                bufs.push(buffer::Buffer::new(path.clone(), text));
                                 bufs[nb].filename = Some(path.clone());
                                 bufs[nb].modified = false;
                                 show_buffer(&mut tree, &mut active, nb);
@@ -209,7 +220,7 @@ fn main() {
                     msg = "No file name for this buffer".to_string();
                 }
             } else if n == 0x17 { // Ctrl-x Ctrl-w: write-file
-                let path = terminal::read_line_files("Write file: ".to_string());
+                let path = terminal::read_line_files("Write file: ");
                 if !path.is_empty() {
                     // M-8: the filename binds ONLY on success; a failed
                     // write leaves save-target (and C-x C-s) untouched.
@@ -222,7 +233,7 @@ fn main() {
                     }
                 }
             } else if n == 0x09 { // Ctrl-x Ctrl-i: insert-file
-                let path = terminal::read_line_files("Insert file: ".to_string());
+                let path = terminal::read_line_files("Insert file: ");
                 if !path.is_empty() {
                     match read_file(path.to_string()) {
                         Ok(text) => {
@@ -249,7 +260,7 @@ fn main() {
                 if !proceed {
                     msg = "Cancelled".to_string();
                 } else {
-                    bufs[bi] = buffer::Buffer::new(name.to_string(), "".to_string());
+                    bufs[bi] = buffer::Buffer::new(name.clone(), "");
                     bufs[bi].filename = None;
                     bufs[bi].modified = false;
                     // M-15: leaves ALIASING this buffer (C-x 2/C-x 3/C-x C-f
@@ -289,18 +300,12 @@ fn main() {
                 if ti == 999999 && sel.is_empty() {
                     msg = "Cancelled".to_string();
                 } else if ti < bufs.len() {
-                    tree.leaves[active].buffer = ti;
-                    tree.leaves[active].point = 0;
-                    tree.leaves[active].mark = 0;
-                    tree.leaves[active].scroll = 0;
+                    attach_leaf(&mut tree, active, ti);
                     moved = true;
                     msg = "".to_string();
                 } else {
-                    bufs.push(buffer::Buffer::new(sel.to_string(), "".to_string()));
-                    tree.leaves[active].buffer = bufs.len() - 1;
-                    tree.leaves[active].point = 0;
-                    tree.leaves[active].mark = 0;
-                    tree.leaves[active].scroll = 0;
+                    bufs.push(buffer::Buffer::new(sel, ""));
+                    attach_leaf(&mut tree, active, bufs.len() - 1);
                     moved = true;
                     msg = "".to_string();
                 }
@@ -402,7 +407,7 @@ fn main() {
                 msg = "".to_string();
             }
         } else if b == 0x12 { // Ctrl-r: reverse search
-            let q = terminal::read_line("Reverse find: ".to_string());
+            let q = terminal::read_line("Reverse find: ");
             if !q.is_empty() {
                 let hit = bufs[bi].find_backward(&q, bufs[bi].point);
                 if let Some(start) = hit {
@@ -471,7 +476,7 @@ fn main() {
         } else if b == 0x05 {
             bufs[bi].end_of_line(); // Ctrl-e
         } else if b == 0x0c { // Ctrl-l: go-to-line (minibuffer reads a line number)
-            let q = terminal::read_line("Go to line: ".to_string());
+            let q = terminal::read_line("Go to line: ");
             if q.is_empty() {
                 msg = "Cancelled".to_string();
             } else {
@@ -529,8 +534,7 @@ fn main() {
             } // EOF: insert nothing
         }
         if !moved {
-            tree.leaves[active].point = bufs[bi].point;
-            tree.leaves[active].mark = bufs[bi].mark;
+            sync_leaf(&mut tree, &bufs, active, bi);
         }
         prev_cmd = b;
     }

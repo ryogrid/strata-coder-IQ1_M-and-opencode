@@ -67,10 +67,23 @@
 - [x] **B-6**: 「編集で領域が消える(mark 追従)」を README に明文化。01 §B-6
   → README Region 条項に「挿入(入力/C-j/C-m/C-o/C-y)と backspace は mark を点へ動かし領域消去、C-@ で張り直し。C-d/C-k は領域維持」を追記(コード実測:insert_char/insert_newline_after/delete_backward の 3 箇所のみ mark=point、fix #18)
 - [ ] **B-9**: buffer の find/クランプ/move_gap 単体テスト追加。01 §B-9 → (部分)find/gap/move_gap(挿入経路)/insert_newline_after は fix #2 で追加済。クランプ系は e2e s112/s141 が担保。残り: line_start/line_end 境界の unit
-- [ ] **B-10**: `self: &Buffer` → `&self`、String 引数 → `&str`/`Into<String>`。01 §B-10
+- [x] **B-10**: `self: &Buffer` → `&self`、String 引数 → `&str`/`Into<String>`。01 §B-10
+  - buffer.rs: 全 29 メソッドの receivers を `&self`/`&mut self` に(extern-style 廃止)。
+    `Buffer::new(name/text: impl Into<String>` にし literal 呼び出しの `.to_string()` を
+    削除(テスト 14 箇所+main 6 箇所。&String からは明示 `clone()`)
+  - terminal.rs: `read_line`/`read_line_buffers`/`read_line_files`/`read_line_eof` の
+    prompt を `impl Into<String>` 化(core の read_line_c は String のまま)。main の
+    素 literal prompt 6 箇所の `.to_string()` 削除(fix #19)
 - [ ] **M-11**: 300行ディスパッチをテーブル化(architecture の keymap tree 記述と共に対応)。02 §M-11
 - [ ] **M-12**: prev_cmd は last-command 相当に限定(現状文書と整合、注記のみ)。02 §M-12
-- [ ] **M-13**: leaf/bufs 間の point 書写しをヘルパー集約。02 §M-13
+- [x] **M-13**: leaf/bufs 間の point 書写しをヘルパー集約。02 §M-13
+  - main.rs に `sync_leaf`(bufs→leaf の point/mark 書写し:C-x o 直前・ループ末尾の
+    2 箇所)と `attach_leaf`(buffer 添付+point/mark/scroll=0:C-x b 切替 2 箇所+
+    show_buffer の単一窓/分割窓の 2 分岐=計 4 箇所)を導入。ループ先頭のクランプ
+    (M-15)は leaf→bufs 方向で意味論が別のため非集約(注記コメント済み)
+  - per-leaf point/mark キャッシュ仕様(fix #9 ゲート記録): 分割 leaf が同一 buffer を
+    alias しても point は leaf ごとに独立。C-x k は全 alias leaf を 0 化(M-15)、
+    再表示時 show_buffer/C-x b は 0 リセットなので stale キャッシュは可視化されない
 - [x] **M-15**: alias キル後の stale leaf-point で panic(fix #7 ゲート発見・既存バグ)。`C-x 2`→`C-e`→`C-x o`→`C-x k`→`C-x o`→`x` で buffer.rs move_gap 添字外(pure legacy キーで再現、M-6 以前から存在)。`C-x k`時に buffer を指す全 leaf の point/mark/scroll を 0 化、かつ/または main ループ先頭 sync で `point.min(buf.len())` クランプ。M-13 と併せて対応可 → 両方実施(C-x k=全 alias leaf を 0 化/ループ先頭=point・mark を len にクランプ)。e2e s153(旧 worktree で panic 確認・新 PASS、fix #9)
 - [ ] **M-14**: .to_string()/clone 乱用を API 変更で削減。02 §M-14
 - [ ] **S-5**: Frame.kind を enum 化(境界 Frame の leaf ダミー除去)。03 §S-5
@@ -470,7 +483,7 @@
   CI 検証:run(67ecf76)=成功(s133 修正+termsize 置換を含む全ステップ green)。
   GitHub ランナーで e2e 84/84=初フルグリーン(fix #16/#17 統合ゲート済み)。
   (fix #17 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #18(このコミット)**: 低コスト簇 B-5/B-6/D-6/D-8。
+- 2026-10-25: **fix #18(コミット d0785e4)**: 低コスト簇 B-5/B-6/D-6/D-8。
   B-5=transpose_chars の点 0 分岐(先頭 2 文字 swap)を削除し Emacs 準拠で no-op 化
   (unit transpose_chars_noop_at_start=点 0 で不変+点 2 で h↔i swap・point 進)。
   e2e s156(C-t@0 でデモ 1 行目不変/C-f×2 後の C-t で `Tihs ...`、HEAD=67ecf76
@@ -484,3 +497,16 @@
   release 6/6(/tmp/rs11.out)。s156 追加による release_smoke 行範囲(1,53/543,545)は
   末尾追加のため不変(実測)。ゲートレビューはコミット前に実施。
   (fix #18 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #19(このコミット)**: B-10(API スタイル)。buffer.rs の全 29
+  メソッド receivers を `&self`/`&mut self` 化。`Buffer::new` を `impl Into<String>` 2 引数に
+  (テスト 14・main 6 呼び出しの literal `.to_string()` 消去。&String 引数は明示 clone)。
+  terminal.rs の read_line 系 4 ラッパ(read_line/read_line_buffers/read_line_files/
+  read_line_eof)の prompt を `impl Into<String>` 化(core read_line_c は String のまま、
+  再帰 echo が String を要求)/main の literal prompt 6 箇所 `.to_string()` 消去。
+  挙動不変(型変換のみ)。main の to_string 数 51→39・buffer.rs テスト 15→2。
+  加えて M-13 を同クラスタで実施(`sync_leaf`/`attach_leaf` ヘルパー集約、上記)。
+  ゲート Minor 織り込み=末尾使用の clone 除去(main.rs:90 `Some(path)` 移動/
+  :299 `Buffer::new(sel, "")`)。unit 31/31・clippy `--all-targets` 0・build 0・
+  フル e2e 85/85・release 6/6=最終ツリーでコミット前に実行(/tmp/e2e_run24.out は
+  B-10 単体・run26/rs14 は B-10+M-13 最終)。ゲートレビューはコミット前に実施。
+  (fix #19 のコミットハッシュは次エントリに記載)

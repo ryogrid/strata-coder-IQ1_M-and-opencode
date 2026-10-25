@@ -535,24 +535,26 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
 // Read a line of input in raw mode with local echo, printed on the bottom
 // (status) row so it replaces the status line like Emacs minibuffer prompts.
 // EOF collapses to the empty string (= cancel), same as Ctrl-g.
-pub fn read_line(prompt: String) -> String {
-    read_line_c(prompt, vec![], false).unwrap_or("".to_string())
+// B-10: prompt accepts &str / String (the core read_line_c keeps String;
+// the wrappers convert), so call sites drop the .to_string() ceremony.
+pub fn read_line(prompt: impl Into<String>) -> String {
+    read_line_c(prompt.into(), vec![], false).unwrap_or("".to_string())
 }
 
 // Minibuffer line with Tab completion over given candidates (buffer names).
-pub fn read_line_buffers(prompt: String, names: Vec<String>) -> String {
-    read_line_c(prompt, names, false).unwrap_or("".to_string())
+pub fn read_line_buffers(prompt: impl Into<String>, names: Vec<String>) -> String {
+    read_line_c(prompt.into(), names, false).unwrap_or("".to_string())
 }
 
 // Minibuffer line with Tab completion over the filesystem.
-pub fn read_line_files(prompt: String) -> String {
-    read_line_c(prompt, vec![], true).unwrap_or("".to_string())
+pub fn read_line_files(prompt: impl Into<String>) -> String {
+    read_line_c(prompt.into(), vec![], true).unwrap_or("".to_string())
 }
 
 // Minibuffer line exposing the EOF distinction (None): for call sites where
 // "stdin closed" must behave differently from "cancelled" (exit confirm).
-pub fn read_line_eof(prompt: String, cands: Vec<String>, file_comp: bool) -> Option<String> {
-    read_line_c(prompt, cands, file_comp)
+pub fn read_line_eof(prompt: impl Into<String>, cands: Vec<String>, file_comp: bool) -> Option<String> {
+    read_line_c(prompt.into(), cands, file_comp)
 }
 
 #[cfg(test)]
