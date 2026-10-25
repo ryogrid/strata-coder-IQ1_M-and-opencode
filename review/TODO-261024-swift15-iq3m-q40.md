@@ -88,12 +88,18 @@
     再表示時 show_buffer/C-x b は 0 リセットなので stale キャッシュは可視化されない
 - [x] **M-15**: alias キル後の stale leaf-point で panic(fix #7 ゲート発見・既存バグ)。`C-x 2`→`C-e`→`C-x o`→`C-x k`→`C-x o`→`x` で buffer.rs move_gap 添字外(pure legacy キーで再現、M-6 以前から存在)。`C-x k`時に buffer を指す全 leaf の point/mark/scroll を 0 化、かつ/または main ループ先頭 sync で `point.min(buf.len())` クランプ。M-13 と併せて対応可 → 両方実施(C-x k=全 alias leaf を 0 化/ループ先頭=point・mark を len にクランプ)。e2e s153(旧 worktree で panic 確認・新 PASS、fix #9)
 - [ ] **M-14**: .to_string()/clone 乱用を API 変更で削減。02 §M-14
-- [ ] **S-5**: Frame.kind を enum 化(境界 Frame の leaf ダミー除去)。03 §S-5
+- [x] **S-5**: Frame.kind を enum 化(境界 Frame の leaf ダミー除去)。03 §S-5
+  → `Frame` を enum 化(Window{leaf,top,height,col,width} / BoundaryRow{top,col,width} /
+  BoundaryCol{top,height,col})。境界の dummy `leaf: 0` と magic `kind: 0/1/2` を消去、
+  境界 Frame の定数フィールド(Row.height=1/Col.width=1)も削除(デッド警告駆逐)。
+  screen.rs の prepass/draw が match 網羅(fix #23)
 - [x] **S-6**: scroll 再計算の不変条件をコメント化。03 §S-6
   → screen.rs scroll 再計算部コメント:毎フレーム point から再計算(ページ送りなし)、leaf の scroll は次フレームの開始点で再描画は冪等(fix #20)
 - [x] **S-7**: 分割時カーソルと status clamp の関係コメント。03 §S-7
   → screen.rs `rows - 2` クランプに注記。finding の主張(下窓最下行でカーソルが 1 行上に見える衝突)はゲートで不可 reach と再判定:layout 高さ=rows-1 と scroll クランプにより crow<=rows-2 が常に成立、クランプは防御的デッドコード(finding 本文よりコードが正しい、fix #20)
-- [ ] **S-8**: find_slot センチネルを Option<usize> へ。03 §S-8
+- [x] **S-8**: find_slot センチネルを Option<usize> へ。03 §S-8
+  → `find_slot` を `Option<usize>` 化(旧センチネル `kind.len()` 廃止)。split=match で
+  早期 false、collapse=`is_some()`、unit は is_some/is_none アサート(fix #23)
 - [x] **S-9**: Node.vertical の命名/コメント改善。03 §S-9
   → Node.vertical に注記:true=縦積み(C-x 2・`-` 行共有)/false=横並び(C-x 3・`|` 列共有)。Emacs の -right は水平配置で名は逆向きに読める(fix #20)
 - [x] **S-10**: point_pos の同一フレーム2回呼びを1回化。03 §S-10 → fix #2 で leaf 単位 1 回化(leaf_pos ベクタでスクロール前計算とカーソル配置で共有)
@@ -120,7 +126,11 @@
     符号付き指数・dangling e のケース追加
 - [x] **H-6**: HTML タグ内属性文字列の装飾(注記)。05 §H-6
   → 注記採用(fix #21):tag スキャンが `<`→`>` まで style 5 で塗り属性の "x" は string(2) にならない(見た目のみ・設計どおり)とコメント明記
-- [ ] **H-7**: スタイルコードを enum 化。05 §H-7
+- [x] **H-7**: スタイルコードを enum 化。05 §H-7
+  → `highlight::Style{{Plain,Keyword,Str,Comment,Number,Marker}}` を導入(素 usize 0..5 を
+  全置換、`Str`=予約語回避)。`styles()->Vec<Style>`/`md_styles(&mut [Style])`、screen.rs の
+  `style_esc` は網羅 match(新 variant 追加は compile error で検出)。SGR 出力は byte 同一
+  (36/35/32/34/1;36/0m、e2e 装飾系 s90-s94/s103/s105 と release smoke color で担保)(fix #23)
 - [x] **H-8**: detect/styles の単体テスト追加。05 §H-8 → fix #2 で追加(detect 拡張子マトリクス、lifetime フィクスチャ、string/char リテラル、json、md)
 - [x] **R-5**: curses 依存縮小(size 検出のみ)/[profile] 注記。06 §R-5
   - curses 0.1.0(実態は `termsize::get().unwrap_or(0,0)` の薄ラッパーとソース確認)を
@@ -560,7 +570,7 @@
   シナリオ(s90-s94)は 10 進数値のみで hex 依存なし(スキャン変更に安全)。
   ゲート APPROVE-WITH-CHANGES(Major-1=指数/二進の被装飾減少→復元で対応)。
   (fix #21 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #22(このコミット)**: T-6/T-9(terminal 挙動小 2 件)。
+- 2026-10-25: **fix #22(コミット 6be8961)**: T-6/T-9(terminal 挙動小 2 件)。
   T-6=Tab 補完 0 候補で `print!("\x07")` BEL(旧=無音)。pty プロブ分離=
   新 BELL_zero:True/BELL_one:False+サフィックス echo 継続、旧(HEAD worktree)
   BELL_zero:False。T-9=save_raw_mode で c_cc[VMIN]=1・VTIME=0 明示
@@ -572,3 +582,22 @@
   dir="" を read_dir("") と呼ぶため元々無一覧(既存欠陥)。新ベルが正しく鳴る。
   T-8 で dir 空文字を `/` に写して一覧化を担保(fix #22 ゲート由来の follow-up)。
   (fix #22 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #23(このコミット)**: S-5/S-8/H-7(型整理 3 件、挙動・出力 byte 同一)。
+  S-5=`Frame` を enum 化(Window/BoundaryRow/BoundaryCol)。境界の dummy `leaf:0` と
+  magic `kind:0/1/2` を消去、境界の定数フィールド(Row.height=1/Col.width=1)も削除で
+  dead-code 警告を字段除去で解消(`#[allow]` 不使用)。screen.rs prepass/draw は match
+  網羅(arm 本体は HEAD と expression 単位の同一=ゲートで token 級検証)。
+  S-8=`find_slot` を `Option<usize>` 化(センチネル `kind.len()` 廃止)、split=None で
+  早期 false、collapse=`is_some()`、unit は is_some/is_none。
+  H-7=`highlight::Style` enum(Plain/Keyword/Str/Comment/Number/Marker)で素 usize 0..5 を
+  全置換、`style_esc` は網羅 match(SGR 文字列は HEAD と同一)、`toks: Vec<Style>`。
+  言語コード(detect の usize)は対象外として保持。
+  ゲート APPROVE(token 級 byte 同一検証・11/11 の style 書き換え 1:1 対応・テスト
+  強化のみで弱化なし)。ゲート Minor 織り込み=境界 arm の余分な `..` 除去と match
+  インデント統一。証拠=unit 36/36・build/clippy `--all-targets` 0・
+  `RUSTFLAGS=-D warnings --locked --all-targets` rc0・フル e2e 85/85(run30、色 7 シナリオ
+  含む)+release smoke 6/6(rs18、最終ツリーを forced rebuild で実行)。run30 は
+  リネーム前の review diff 内容バイナリで走行、その後の編集は空白のみ+全字段束縛 arm の
+  `..` 除去=意味論不変(ゲートが byte-strip 同一で検証)、追加の描画 probe
+  (C-x 2/C-x 3 境界行・列・collapse)PASS。
+  (fix #23 のコミットハッシュは次エントリに記載)

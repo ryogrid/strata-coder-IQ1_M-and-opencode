@@ -4,6 +4,20 @@
 // Languages (codes): 0 plain, 1 c-family (rs c cpp h js ts go css),
 // 2 hash-family (py sh rb yaml toml), 3 json, 4 markdown, 5 html/xml.
 
+// H-7: style codes as an enum (was magic usize 0..5 shared with
+// screen.rs's style_esc). Exhaustive matches in style_esc make adding a
+// style a compile-checked change. The numbers in comments preserve the
+// historical wire order (0..5).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Style {
+    Plain,   // 0: no SGR (reset)
+    Keyword, // 1: cyan
+    Str,     // 2: magenta (string/char literals)
+    Comment, // 3: green
+    Number,  // 4: blue
+    Marker,  // 5: bold cyan (markdown headings/list markers, HTML tags)
+}
+
 pub fn hchars_of(s: &str) -> Vec<char> {
     let mut cs: Vec<char> = vec![];
     for c in s.chars() {
@@ -129,7 +143,7 @@ pub fn kw(lang: usize, w: &[char]) -> bool {
     false
 }
 
-pub fn md_styles(cs: &[char], st: &mut [usize]) {
+pub fn md_styles(cs: &[char], st: &mut [Style]) {
     let n = cs.len();
     let mut i = 0;
     while i < n {
@@ -145,13 +159,13 @@ pub fn md_styles(cs: &[char], st: &mut [usize]) {
         }
         if cs[i] == '#' {
             while i < n && cs[i] != '\n' {
-                st[i] = 5;
+                st[i] = Style::Marker;
                 i += 1;
             }
             continue;
         }
         if i < n && (cs[i] == '-' || cs[i] == '*' || cs[i] == '+') && i + 1 < n && cs[i + 1] == ' ' {
-            st[i] = 5;
+            st[i] = Style::Marker;
             i += 1;
         }
         if i < n && cs[i] == '`' {
@@ -164,7 +178,7 @@ pub fn md_styles(cs: &[char], st: &mut [usize]) {
             }
             let mut k = i;
             while k < j {
-                st[k] = 2;
+                st[k] = Style::Str;
                 k += 1;
             }
             i = j;
@@ -205,12 +219,12 @@ fn lang1_tick_opens_string(cs: &[char], i: usize) -> bool {
     true
 }
 
-pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
+pub fn styles(cs: &[char], lang: usize) -> Vec<Style> {
     let n = cs.len();
-    let mut st: Vec<usize> = vec![];
+    let mut st: Vec<Style> = vec![];
     let mut i = 0;
     while i < n {
-        st.push(0);
+        st.push(Style::Plain);
         i += 1;
     }
     if lang == 0 {
@@ -227,7 +241,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
         if is_line_comment {
             let mut j = i;
             while j < n && cs[j] != '\n' {
-                st[j] = 3;
+                st[j] = Style::Comment;
                 j += 1;
             }
             i = j;
@@ -246,7 +260,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             }
             let mut k = i;
             while k < j {
-                st[k] = 3;
+                st[k] = Style::Comment;
                 k += 1;
             }
             i = j;
@@ -263,7 +277,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             }
             let mut k = i;
             while k < j {
-                st[k] = 2;
+                st[k] = Style::Str;
                 k += 1;
             }
             i = j;
@@ -289,7 +303,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             }
             let mut k = i;
             while k < j {
-                st[k] = 2;
+                st[k] = Style::Str;
                 k += 1;
             }
             i = j;
@@ -309,7 +323,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             }
             let mut k = i;
             while k < j {
-                st[k] = 5;
+                st[k] = Style::Marker;
                 k += 1;
             }
             i = j;
@@ -350,7 +364,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             }
             let mut k = i;
             while k < j {
-                st[k] = 4;
+                st[k] = Style::Number;
                 k += 1;
             }
             i = j;
@@ -364,7 +378,7 @@ pub fn styles(cs: &[char], lang: usize) -> Vec<usize> {
             if kw(lang, &cs[i..j]) {
                 let mut m = i;
                 while m < j {
-                    st[m] = 1;
+                    st[m] = Style::Keyword;
                     m += 1;
                 }
             }
@@ -400,20 +414,20 @@ mod tests {
         assert!(st.len() == cs.len());
         for k in 0..cs.len() {
             if cs[k] == '\'' {
-                assert!(st[k] != 2); // 'de>(x: & fails (c), 'de str) {} fails (a)
+                assert!(st[k] != Style::Str); // 'de>(x: & fails (c), 'de str) {} fails (a)
             }
         }
-        assert!(st[0] == 1); // fn is a keyword
+        assert!(st[0] == Style::Keyword); // fn is a keyword
     }
     #[test]
     fn rust_strings_and_char_literal() {
         let cs = hchars_of("let s = \"hi\"; let c = 'a';");
         let st = styles(&cs, 1);
         let dq = cs.iter().position(|c| *c == '"').unwrap();
-        assert!(st[dq] == 2); // "hi" string
+        assert!(st[dq] == Style::Str); // "hi" string
         let sq = cs.iter().position(|c| *c == '\'').unwrap();
-        assert!(st[sq] == 2); // 'a' char literal: styled as string (accepted)
-        assert!(st[0] == 1); // let keyword
+        assert!(st[sq] == Style::Str); // 'a' char literal: styled as string (accepted)
+        assert!(st[0] == Style::Keyword); // let keyword
     }
     #[test]
     fn json_single_quote_untouched() {
@@ -421,7 +435,7 @@ mod tests {
         let st = styles(&cs, 3);
         for k in 0..cs.len() {
             if cs[k] == '\'' {
-                assert!(st[k] == 0);
+                assert!(st[k] == Style::Plain);
             }
         }
     }
@@ -429,42 +443,42 @@ mod tests {
     fn md_heading_and_marker() {
         let cs = hchars_of("# Title\n- item");
         let st = styles(&cs, 4);
-        assert!(st[0] == 5);
-        assert!(st[8] == 5); // the '-' marker of "- item"
+        assert!(st[0] == Style::Marker);
+        assert!(st[8] == Style::Marker); // the '-' marker of "- item"
     }
     #[test]
     fn md_unclosed_code_span_stops_at_line_end() {
         // H-4: an UNCLOSED ` span paints to end-of-line only: the next
         // line must not be swallowed.
         let cs: Vec<char> = "a `bc\nd\n".chars().collect();
-        let mut st = vec![0usize; cs.len()];
+        let mut st = vec![Style::Plain; cs.len()];
         md_styles(&cs, &mut st);
-        assert!(st[2] == 2 && st[3] == 2 && st[4] == 2); // `bc to EOL
-        assert!(st[5] == 0); // the newline stays plain
-        assert!(st[6] == 0); // NEXT line untouched
+        assert!(st[2] == Style::Str && st[3] == Style::Str && st[4] == Style::Str); // `bc to EOL
+        assert!(st[5] == Style::Plain); // the newline stays plain
+        assert!(st[6] == Style::Plain); // NEXT line untouched
     }
     #[test]
     fn number_scan_letters_only_after_0x() {
         // H-5: letters join a number ONLY inside 0x.. hex; exponents
         // join when a digit follows e/E (directly or after one sign).
         let s1 = styles(&"2face".chars().collect::<Vec<char>>(), 1);
-        assert!(s1[0] == 4 && s1[1] == 0); // '2' is the number, face plain
+        assert!(s1[0] == Style::Number && s1[1] == Style::Plain); // '2' is the number, face plain
         let s2 = styles(&"0x1F".chars().collect::<Vec<char>>(), 1);
-        assert!(s2.iter().all(|&x| x == 4));
+        assert!(s2.iter().all(|&x| x == Style::Number));
         let s3 = styles(&"1.2".chars().collect::<Vec<char>>(), 1);
-        assert!(s3.iter().all(|&x| x == 4));
+        assert!(s3.iter().all(|&x| x == Style::Number));
         let s4 = styles(&"1e6".chars().collect::<Vec<char>>(), 1);
-        assert!(s4.iter().all(|&x| x == 4)); // exponent restored
+        assert!(s4.iter().all(|&x| x == Style::Number)); // exponent restored
         let s5 = styles(&"12.3e4".chars().collect::<Vec<char>>(), 1);
-        assert!(s5.iter().all(|&x| x == 4));
+        assert!(s5.iter().all(|&x| x == Style::Number));
         let s6 = styles(&"1e-3 x".chars().collect::<Vec<char>>(), 1);
-        assert!(s6[0] == 4 && s6[1] == 4); // "1e" painted (e joins via sign+digit)
-        assert!(s6[2] == 0); // the sign itself never paints (same as the old scan)
-        assert!(s6[3] == 4); // the exponent's digits paint as their own number
-        assert!(s6[4] == 0 && s6[5] == 0); // space and x are plain
+        assert!(s6[0] == Style::Number && s6[1] == Style::Number); // "1e" painted (e joins via sign+digit)
+        assert!(s6[2] == Style::Plain); // the sign itself never paints (same as the old scan)
+        assert!(s6[3] == Style::Number); // the exponent's digits paint as their own number
+        assert!(s6[4] == Style::Plain && s6[5] == Style::Plain); // space and x are plain
         let s7 = styles(&"0b101".chars().collect::<Vec<char>>(), 1);
-        assert!(s7.iter().all(|&x| x == 4)); // binary literal restored
+        assert!(s7.iter().all(|&x| x == Style::Number)); // binary literal restored
         let s8 = styles(&"2e".chars().collect::<Vec<char>>(), 1);
-        assert!(s8[0] == 4 && s8[1] == 0); // dangling e: '2' only
+        assert!(s8[0] == Style::Number && s8[1] == Style::Plain); // dangling e: '2' only
     }
 }

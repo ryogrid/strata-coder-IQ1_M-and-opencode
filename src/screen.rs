@@ -6,8 +6,10 @@
 // rendering is used in all cases, with a fixed 24x80 fallback when the
 // size is unknown (not a tty).
 use super::buffer::Buffer;
+use super::window::Frame;
 use super::window::Tree;
 use super::highlight::styles;
+use super::highlight::Style;
 use super::highlight::detect;
 use super::highlight::hchars_of;
 
@@ -35,7 +37,7 @@ struct BufView {
     chars: Vec<char>,
     lines: Vec<String>,
     offs: Vec<usize>,
-    toks: Vec<usize>,
+    toks: Vec<Style>,
 }
 
 fn view_of(views: &mut [Option<BufView>], bufs: &[Buffer], bidx: usize) {
@@ -158,11 +160,15 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
 
     let mut f = 0;
     while f < frames.len() {
-        if frames[f].kind > 0 {
-            f += 1; // boundary frames carry no buffer/scroll state
-            continue;
-        }
-        let leaf_idx = frames[f].leaf;
+        // S-5: only WINDOW frames carry buffer/scroll state; boundaries
+        // (the '-' row / '|' column) are skipped.
+        let (leaf_idx, fheight) = match frames[f] {
+            Frame::Window { leaf, height, .. } => (leaf, height),
+            _ => {
+                f += 1;
+                continue;
+            }
+        };
         let bidx = tree.leaves[leaf_idx].buffer;
         view_of(&mut views, bufs, bidx);
         let pos = point_pos(&views[bidx].as_ref().unwrap().chars, tree.leaves[leaf_idx].point);
@@ -176,8 +182,8 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         if pline < scroll {
             scroll = pline;
         }
-        if pline >= scroll + frames[f].height {
-            scroll = pline - frames[f].height + 1;
+        if pline >= scroll + fheight {
+            scroll = pline - fheight + 1;
         }
         tree.leaves[leaf_idx].scroll = scroll;
         f += 1;
@@ -193,68 +199,69 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     let mut have_cursor = false;
     let mut i = 0;
     while i < frames.len() {
-        if frames[i].kind == 1 {
-            // Horizontal window boundary: a row of dashes.
-            let mut dash = "".to_string();
-            let mut q = 0;
-            while q < frames[i].width {
-                dash += "-";
-                q += 1;
-            }
-            draw_cell(frames[i].top, frames[i].col, dash, frames[i].width, vec![]);
-            i += 1;
-            continue;
-        }
-        if frames[i].kind == 2 {
-            // Vertical window boundary: a column of bars.
-            let mut rr = 0;
-            while rr < frames[i].height {
-                draw_cell(frames[i].top + rr, frames[i].col, "|".to_string(), 1, vec![]);
-                rr += 1;
-            }
-            i += 1;
-            continue;
-        }
-        let leaf_idx = frames[i].leaf;
-        let bidx = tree.leaves[leaf_idx].buffer;
-        view_of(&mut views, bufs, bidx);
-        let buf = &bufs[bidx];
-        let view = views[bidx].as_ref().unwrap();
-        let mut r = 0;
-        while r < frames[i].height {
-            let li = tree.leaves[leaf_idx].scroll + r;
-            if li < view.lines.len() {
-                let off = view.offs[li];
-                let mut line_styles: Vec<usize> = vec![];
-                let mut k = 0;
-                while k < view.lines[li].len() {
-                    if off + k < view.toks.len() {
-                        line_styles.push(view.toks[off + k]);
-                    } else {
-                        line_styles.push(0);
-                    }
-                    k += 1;
+        // S-5: one match per frame: boundaries draw dashes/bars, windows
+        // draw their buffer slice.
+        match frames[i] {
+            Frame::BoundaryRow { top, col, width } => {
+                // Horizontal window boundary: a row of dashes.
+                let mut dash = "".to_string();
+                let mut q = 0;
+                while q < width {
+                    dash += "-";
+                    q += 1;
                 }
-                draw_cell(frames[i].top + r, frames[i].col, view.lines[li].clone(), frames[i].width, line_styles);
-            } else {
-                draw_cell(frames[i].top + r, frames[i].col, "@".to_string(), frames[i].width, vec![]);
+                draw_cell(top, col, dash, width, vec![]);
             }
-            r += 1;
-        }
-        if leaf_idx == active {
-            let (pline, pcol) = leaf_pos[leaf_idx]; // computed once in the prepass (S-10)
-            st_line = pline + 1;
-            st_total = view.lines.len();
-            let len = buf.len();
-            st_pct = (tree.leaves[leaf_idx].point * 100).checked_div(len).unwrap_or(0);
-            crow = frames[i].top + (pline - tree.leaves[leaf_idx].scroll);
-            // pcol is in DISPLAY CELLS (S-2). Clamped to the last cell; on a
-            // fullwidth char straddling the frame edge the caret lands on its
-            // 2nd cell and the terminal snaps it back - accepted (Design Doc C).
-            let maxc = if frames[i].width > 0 { frames[i].width - 1 } else { 0 };
-            let pc = if pcol < maxc { pcol } else { maxc };
-            ccol = frames[i].col + pc;
-            have_cursor = true;
+            Frame::BoundaryCol { top, col, height } => {
+                // Vertical window boundary: a column of bars.
+                let mut rr = 0;
+                while rr < height {
+                    draw_cell(top + rr, col, "|".to_string(), 1, vec![]);
+                    rr += 1;
+                }
+            }
+            Frame::Window { leaf: leaf_idx, top, height, col, width } => {
+                let bidx = tree.leaves[leaf_idx].buffer;
+                view_of(&mut views, bufs, bidx);
+                let buf = &bufs[bidx];
+                let view = views[bidx].as_ref().unwrap();
+                let mut r = 0;
+                while r < height {
+                    let li = tree.leaves[leaf_idx].scroll + r;
+                    if li < view.lines.len() {
+                        let off = view.offs[li];
+                        let mut line_styles: Vec<Style> = vec![];
+                        let mut k = 0;
+                        while k < view.lines[li].len() {
+                            if off + k < view.toks.len() {
+                                line_styles.push(view.toks[off + k]);
+                            } else {
+                                line_styles.push(Style::Plain);
+                            }
+                            k += 1;
+                        }
+                        draw_cell(top + r, col, view.lines[li].clone(), width, line_styles);
+                    } else {
+                        draw_cell(top + r, col, "@".to_string(), width, vec![]);
+                    }
+                    r += 1;
+                }
+                if leaf_idx == active {
+                    let (pline, pcol) = leaf_pos[leaf_idx]; // computed once in the prepass (S-10)
+                    st_line = pline + 1;
+                    st_total = view.lines.len();
+                    let len = buf.len();
+                    st_pct = (tree.leaves[leaf_idx].point * 100).checked_div(len).unwrap_or(0);
+                    crow = top + (pline - tree.leaves[leaf_idx].scroll);
+                    // pcol is in DISPLAY CELLS (S-2). Clamped to the last cell; on a
+                    // fullwidth char straddling the frame edge the caret lands on its
+                    // 2nd cell and the terminal snaps it back - accepted (Design Doc C).
+                    let maxc = if width > 0 { width - 1 } else { 0 };
+                    let pc = if pcol < maxc { pcol } else { maxc };
+                    ccol = col + pc;
+                    have_cursor = true;
+                }
+            }
         }
         i += 1;
     }
@@ -286,28 +293,23 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     tree
 }
 
-pub fn style_esc(s: usize) -> String {
-    if s == 1 {
-        return "\x1b[36m".to_string();
+pub fn style_esc(s: Style) -> String {
+    // H-7: exhaustive match - adding a Style variant is a COMPILE error
+    // here until the SGR string is defined (the old usize chain silently
+    // fell through to reset for unknown codes).
+    match s {
+        Style::Keyword => "\x1b[36m".to_string(),
+        Style::Str => "\x1b[35m".to_string(),
+        Style::Comment => "\x1b[32m".to_string(),
+        Style::Number => "\x1b[34m".to_string(),
+        Style::Marker => "\x1b[1;36m".to_string(),
+        Style::Plain => "\x1b[0m".to_string(),
     }
-    if s == 2 {
-        return "\x1b[35m".to_string();
-    }
-    if s == 3 {
-        return "\x1b[32m".to_string();
-    }
-    if s == 4 {
-        return "\x1b[34m".to_string();
-    }
-    if s == 5 {
-        return "\x1b[1;36m".to_string();
-    }
-    "\x1b[0m".to_string()
 }
 
-fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usize>) {
+fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<Style>) {
     let mut chars: Vec<char> = vec![];
-    let mut stys: Vec<usize> = vec![];
+    let mut stys: Vec<Style> = vec![];
     let src: Vec<char> = line.chars().collect();
     let mut cells = 0;
     for (idx, c) in src.into_iter().enumerate() {
@@ -321,12 +323,12 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
             break;
         }
         chars.push(d);
-        stys.push(if idx < styles.len() { styles[idx] } else { 0 });
+        stys.push(if idx < styles.len() { styles[idx] } else { Style::Plain });
         cells += w;
     }
     while cells < width {
         chars.push(' ');
-        stys.push(0);
+        stys.push(Style::Plain);
         cells += 1;
     }
     // Build the line with SGR escapes injected on style changes; escapes are
@@ -335,7 +337,7 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
     for cc in hchars_of("\x1b[0m") {
         out.push(cc);
     }
-    let mut cur = 0;
+    let mut cur = Style::Plain;
     let mut j = 0;
     while j < chars.len() {
         let s = stys[j];
@@ -348,7 +350,7 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<usi
         out.push(chars[j]);
         j += 1;
     }
-    if cur != 0 {
+    if cur != Style::Plain {
         for cc in hchars_of("\x1b[0m") {
             out.push(cc);
         }
