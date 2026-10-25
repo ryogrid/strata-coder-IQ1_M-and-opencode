@@ -39,17 +39,47 @@
    and s140 (EOF).
 8. **Timing**: fixed settles (no frame-sync). If a checkpoint ever
    flakes, the settle ladder is `SETTLE_CHECK_MS -> capture_poll
-   (3x300 ms)` - poll-until-equal is NOT used for grid diffs (it masks
+   (4x300 ms)` - poll-until-equal is NOT used for grid diffs (it masks
    lag-vs-wrong-state distinctions), only for the P6 mid-prompt echo
    row (echo appears deterministically once keys are consumed;
-   documented exception).
-10. **Mid-prompt echo wrap**: the echo writes at the LAST screen row; a
-    > 80-cell echo WRAPS, scrolls the pane, and row 23 shows the
-    overflow fragment. P5/P6 pin an ECHO BUDGET LAW
-    (`prompt + input + list <= 80 cells`, ASCII pool, model asserts
-    before every mid-prompt comparison); wrapped echoes are out of the
-    comparison surface (03 §P6 setup sizes the seeded dir to fit).
-11. **Model/production drift**: the renderer/reader mirrors duplicate
+   documented exception; the poll target is the echo's LAST chunk, and
+   a NEVER-appearing target PANICS - an unobservable mid state is a
+   test failure, never a silent pass).
+10. **Mid-prompt echo wrap**: the echo writes at the LAST screen row;
+    a > w-cell echo WRAPS onto the pane's TRAILING rows as chunks of w
+    chars (the tree shifts up). The v1 budget law: echo <= `2 * w`
+    cells; `check_mid` compares EVERY chunk row bottom-up (the model
+    builds the same chunks - wrapping IS on the comparison surface,
+    bounded to 2 rows; 03 §P6 seeds SHORT dirs (`/tmp/e<pid..><tag>`)
+    so the buffer-list and file echoes stay inside the budget).
+11. **Mid-prompt observable surface**: ONLY the echo row is compared
+    mid-prompt (tree rows shift on wrap - excluded by design). Two
+    physical facts shape the checkpoints: (a) the prompt echo appears
+    AFTER the prefix bytes are consumed, racing the tree repaint -
+    hence the echo-chunk poll; (b) a closing `C-g` echo
+    (`" [Cancelled]"`) is EPHEMERAL: production's cancel paints the
+    msg on the status row via a full-screen repaint that lands at
+    once, so the suffixed echo is unobservable. P6 mid cuts therefore
+    land BEFORE closing C-gs (stable prompt state), and the
+    `[Cancelled]` echo remains MODELED for the final grid (status row).
+12. **Status-row truncation**: production draws the status via
+    `draw_cell(status, cols)` = cell truncation at the pane width, so
+    a long msg (`Failed to open {long path}...`, `Buffers: ...`) cuts
+    the ` {line}/{total} ({pct}%)` tail on row 23. The P1
+    `parse_status` tail parser is therefore INVALID on truncated rows:
+    the combination sanity (`comb_sane`) does NOT run it, and the P5
+    status-tail assert is GUARDED by `last_line < PANE_W` (untruncated
+    row). Truncation is DOCUMENTED PRODUCTION BEHAVIOR, not a bug (the
+    grid diff compares the truncated row verbatim, so it is covered).
+13. **tmux driver laws** (hard-won, recorded): `send-keys -H` with NO
+    key arguments sends ENTER - `send_hex(&[])` must NEVER be called;
+    byte encodings must be derived from the `keymap.rs` tables, not
+    memory - sending C-x C-f (`18 06`) where the model ran save
+    (`18 13`) opened a Find-file prompt whose reader consumed the NEXT
+    op's bytes (the root cause of two mirror-mystery failures). The
+    model NEVER sends bytes; the drivers do (`run_prompt` is
+    model-only; every caller pairs it with `send_hex`).
+14. **Model/production drift**: the renderer/reader mirrors duplicate
    rules that production owns (screen.rs/terminal.rs are not compiled
    in-target). Mitigation: every mirror rule carries the production
    file:line; the design gate verifies rule-for-rule; e2e keeps

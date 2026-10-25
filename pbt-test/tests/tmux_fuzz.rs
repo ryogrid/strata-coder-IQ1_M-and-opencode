@@ -17,6 +17,7 @@ mod buffer;
 use buffer::Buffer;
 use proptest::prelude::*;
 use support::cfg;
+use support::last_line;
 use support::pane_sane;
 use support::pane_sane_lax;
 use support::pane_tail;
@@ -510,10 +511,10 @@ proptest! {
         let len = sim.buf.len();
         let p = (sim.buf.point * 100).checked_div(len).unwrap_or(0); // screen.rs formula
         let want_line = format!("Wrote {} {}/{} ({}%)", out_path, n, m, p);
-        let mut last = Session::last_line(&s.capture());
+        let mut last = last_line(&s.capture());
         if last != want_line {
-            let pane2 = s.capture_poll(|c| Session::last_line(c) == want_line);
-            last = Session::last_line(&pane2);
+            let pane2 = s.capture_poll(|c| last_line(c) == want_line);
+            last = last_line(&pane2);
         }
         prop_assert_eq!(last, want_line, "ops[{}] tail[{}]", log, pane_tail(&s.capture()));
 

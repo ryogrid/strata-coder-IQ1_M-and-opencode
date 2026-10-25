@@ -11,5 +11,7 @@ echo "== P0 (in-process gap-buffer model)"
 cargo test --locked -p pbt-test --test buffer_model || FAILED=1
 echo "== P1-P4 (tmux fuzz, one binary, serialized)"
 cargo test --locked -p pbt-test --test tmux_fuzz -- --test-threads=1 || FAILED=1
+echo "== P5-P7 (full-pane combination, serialized; pbt-design-combination/04)"
+cargo test --locked -p pbt-test --test combination -- --test-threads=1 || FAILED=1
 echo "PBT FAILED=$FAILED"
 exit $FAILED

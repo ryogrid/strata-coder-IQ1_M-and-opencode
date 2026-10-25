@@ -63,13 +63,17 @@ Invariants (all on the grid):
 
 Focus: reader-level behaviors a final-state-only property cannot see.
 
-Setup: 3 seeded files in a SHORT seeded DIRECTORY
-`/tmp/emur-pbt-<id>-d/` (names `a1.txt`, `a2.txt`, `zzq.txt` - common
-prefix `a`) + 2 buffers exist (`*demo*` + seed buffer, via a
-fixed `C-x b`/`C-x C-f` prelude, NOT generated). ECHO BUDGET LAW (gate
-J3): prompt + input + tab-list <= 80 CELLS (this setup: 11 + ~25 + 2 +
-name list <= 60; the model ASSERTS the budget before asserting a
-mid-prompt row - wrap is out of the comparison surface, 05 §10).
+Setup: seeded files in a SHORT seeded DIRECTORY
+`/tmp/e<pid%100000*100+id><tag>/` (`seed.txt`, `a1.txt`, `a2.txt`,
+`zzq.txt`, `sub/` - the `a` pair shares prefix `a`; short paths keep the
+file/buffer echoes inside the wrap budget, gate J3 as BUILT). The
+buffer-list cases get a SECOND buffer `nb` via a fixed `C-x b` + `nb` +
+Enter prelude (NOT generated; startup is the single seed buffer, 02 §1).
+ECHO BUDGET LAW: the echo string <= `2 * w` cells; over w it WRAPS as
+w-char chunks on the trailing pane rows and EVERY chunk row is compared
+(02 §4, 05 §10 - the wrapped echo is ON the comparison surface, bounded
+to 2 rows; the model asserts the budget before every mid-prompt
+comparison).
 
 Ops (enumerated skeletons, parameters generated):
 
@@ -79,8 +83,8 @@ Ops (enumerated skeletons, parameters generated):
 | file completion 1-hit | `C-x C-f` + dir + `/emurdemo-1` + Tab | suffix `.txt` appears, no list |
 | buffer completion | `C-x b` + Tab | candidate list = buffer names (2 -> list echo; caret-span Enter selects) |
 | select-from-list | `C-x b` + Tab + `C-b` x j + Enter (j small, span arithmetic) | Enter picks the candidate under the caret (model caret tracking) |
-| cancel echo | `C-x C-w` + junk + C-g | echo gains ` [Cancelled]`; final status row = the PREVIOUS msg RETAINED (write-cancel is silent, main.rs:320 takes no msg branch - the model predicts exactly the retained string from the model msg state) |
-| cycle-cancel | `C-x C-b` + C-g | model: empty return -> CYCLE (listform branch) - the grid must show the cycled buffer |
+| cancel echo | `C-x C-w` + junk + C-g + Enter | mid cut is BEFORE the C-g (the prompt + typed junk echo - the ` [Cancelled]` suffix is EPHEMERAL, 05 §11); final status row = the PREVIOUS msg RETAINED (write-cancel is silent, main.rs:320 takes no msg branch - the model predicts exactly the retained string from the model msg state) |
+| cycle-cancel | `C-x C-b` + C-g + Enter | model: empty return -> CYCLE (listform branch) - the grid shows the cycled buffer; the scripted Enter is a SEPARATE main-loop command (run_tail law): the newline lands at the CYCLED leaf's point (observed divergence, 02 §4) |
 | isearch echo | `C-s` + 2 chars (present / absent -> bell) + more chars + DEL (pop) + Enter | final grid (point moved to match END); the isearch header row is only mid-state (final grid carries no header) |
 | kill-confirm | modify, `C-x k` + `no`/`yes` + Enter | mid-prompt: `Kill buffer {name}? (yes|no) ` echo; final: Killed/Cancelled + alias geometry |
 

@@ -100,19 +100,19 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 待受などのタイミングでの C-x/Meta/C-g/バッファ選択が正しく動くことを
 検証する。
 
-- [ ] G1 操作面の網羅棚卸:plain/C-x/Meta 全バインド+プロンプト状態
+- [x] G1 操作面の網羅棚卸:plain/C-x/Meta 全バインド+プロンプト状態
       (C-x b 選択+Tab 補完、C-x C-f/C-w/C-i、C-x k yes|no、C-l、
       C-s isearch、C-r、C-c 終了確認、C-g 取消)を 1 操作=1 op で列挙。
       分割直後の C-x、ミニバッファ中のバッファ選択、各時点の C-g を
-      列として明示
-- [ ] G2 モデル範囲決定:全面描画モデル(80x24 グリッド=text 領域+
+      列として明示(01 §3 / 03 §P5-P7 で確定)
+- [x] G2 モデル範囲決定:全面描画モデル(80x24 グリッド=text 領域+
       境界+リーフ別モード行+echo 行)、マルチバッファ/エイリアス状態、
       ツリー几何(リーフ point/mark/scroll)、ミニバッファ状態機械。
       照合面=capture-pane プレーンテキスト(色は別レイヤのスポット)。
-      既存 P2 との違い(buffer-only → 全面)を明文化
-- [ ] G3 プロパティ設計:P5=全面描画差分(生成列を model と emur が
+      既存 P2 との違い(buffer-only → 全面)を明文化(02)
+- [x] G3 プロパティ設計:P5=全面描画差分(生成列を model と emur が
       同じキー入力で実行→グリッド一致)、P6=ミニバッファ状態遷移
-      (入力/Tab/yes|no/C-g/EOF)、P7=分割×プレフィックス列挙交互
+      (入力/Tab/yes|no/C-g/EOF)、P7=分割×プレフィックス列挙交互(03)
 - [x] G4 `test-design/pbt-design-combination/` に英文マークダウン群で
       書き出し(README/01 overview/02 model/03 properties/04 harness/
       05 known-gaps。found-bugs は既存 pbt-design/found-bugs.md 継続=英文)。
@@ -120,7 +120,7 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
       screen.rs/terminal.rs は入出力境界のため I/O 制約と MA-2 dead_code を避け
       **モデル側ミラー**(規則は screen.rs/terminal.rs 行番号付きで対応表化)。
       全面差分=80x24 グリッド vs capture(行末 trim 法)
-- [ ] G4b 設計中の追加発見:C-x C-s はプロンプト無し(bound filename /
+- [x] G4b 設計中の追加発見:C-x C-s はプロンプト無し(bound filename /
       未bound=No file name for this buffer)=P5 op 追加済み
 - [x] G5 設計ゲート(サブエージェント、HEAD 実装照合)=APPROVE-WITH-CHANGES
       → 全件織り込み済み(Major J1-J6/Minor m1-m13、計 19 件):
@@ -134,19 +134,59 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
       ゲートが HEAD で TRUE を確認した重要主張:P6 の「listform C-x C-b + C-g は
       Cancelled でなく CYCLS する」(main.rs:410-419)、window.rs 純粋性、
       ENOENT 文字列予測可能性、checkpoints の宙吊りなし
-- [~] G6 設計文書コミット=commit -n+push 実施中(以下でハッシュ確定)+CI 緑確認
+- [x] G6 設計文書コミット=commit 0710208(design docs 6 点)+push+CI 緑確認済み
 
 ## Phase H: 結合テスト実装
 
-- [ ] H1 pbt-test/ に実装(新規 test target。tmux スイート直列規律は
-      既存と同一=実行中は他 tmux/ビルド禁止)
-- [ ] H2 本走+トリアージ(不具合は found-bugs.md に英文登記。
-      実バグは emur 修正→e2e/PBT で回帰ピン)
-- [ ] H3 CI 統合(新規ターゲットの接続)+緑確認
-- [ ] H4 台帳締め(学習記録+変更履歴+ハッシュ・バックフィル)。
-      区切りの良い時点で commit -n+push を挟む
+- [x] H1 実装 `pbt-test/tests/combination.rs`(約 2200 行、新規 test
+      target。P5 全面差分 25 ケース/P6 ミニバッファ機械 14 ケース/
+      P7 分割×プレフィックス 5x8 行列+60x20/P7b。support 3 層化
+      core/sess/sanity を同時実装。tmux スイート直列規律は既存と同一)
+- [x] H2 本走+トリアージ:全 25 ターゲット緑(183.99 秒、--test-threads=1)。
+      発散トリアージで修正したのは全てテスト側のミラー忠実度
+      (Sf=0x18 0x13、sync_in の leaf→buffer コピー、isearch last 法、
+      run_tail 法、find-file reuse=active leaf、kill 未変更の echo 順序、
+      case11 send_hex 漏れ)。**emur 実バグ 0 件=新 PBTF なし**
+- [x] H3 CI 統合(ci.yml に P5-P7 ステップ:PBT_CASES=8、
+      EMUR_BIN=../target/debug/emur、--test-threads=1)+pbt-run.sh 第 3 段
+- [~] H4 台帳締め(このコミット。学習記録+変更履歴+ハッシュ・バックフィル)。
+      コードゲート→commit -n+push→CI 緑→ハッシュ確定
 
 ## 学習記録
+
+- 2026-10-26(結合テスト実装):モデルミラーの発散は「キーの意味」では
+  なく**ループの境界規則**に潜む。(1) 本番 `sync_in` は clamp 後に
+  leaf→buffer へ**コピー**する(main.rs:171-184)。模型が clamp だけ
+  真似ると、エイリアス leaf の point が(buffer 経由で)他 leaf に
+  伝播する列でステータス `%` がズレる。(2) プロンプト読取が返った
+  後に残ったバイトは**別コマンド**としてメインループに流れる
+  (コマンドごとに sync_out→sync_in が挟まる)。C-x C-b 取消→Enter の
+  挿入先が 1 コマンド後の CYCLED leaf になる実態を模型は run_tail で
+  再現する。(3) 未変更バッファの kill はプロンプトが出ないため
+  解答バイト `yes\r` が全文字メインループに流れ、fresh バッファで
+  Enter→y→e→s 順にタイプされる。apply が tail を返す設計で再現。
+- 2026-10-26(結合テスト実装):送信バイト表は記憶で作らず **keymap.rs
+  から導出**せよ。C-x C-s を 0x18 0x06(C-x C-f)で送った事故は、
+  開いた Find-file プロンプトの読取が**次の op のバイト**を吸い込み、
+  まるで模型側が壊れたかのような発散( phantom "Find file:" ペイン)を
+  数日間発生させた。原因は常に送信側、症状は受信側に現れる。
+- 2026-10-26(結合テスト実装):isearch の `last` はエントリ地点から
+  開始し(main.rs:437)、ヒット後は**マッチ開始位置**(`end - q.len()`)
+  へ更新する(490/503)。模型が `end`(マッチ終端)を保持すると次の
+  文字の探索開始が 1 文字遅れ、`C-a` の line マーク規則と相まって
+  ステータス % が発散した。制御バイト(read_char_eof=None)は
+  **ループを抜ける**(skip ではない)。
+- 2026-10-26(結合テスト実装):「観察可能」がモデル比較の境界を決める。
+  C-g 直後の `" [Cancelled]"` echo は全面再描画が即着くため**消滅
+  一瞬**で poll でも捕まらない→mid 比較は C-g **前**の安定状態に切る。
+  長い msg はステータス行を pane 幅で truncation するため、P1 の
+  末尾 parser は truncation 行では無効(P5 の tail 検証は幅ガード付き)。
+  sanity も grid 全面差分より弱い検査(tail parser)は採用しない。
+- 2026-10-26(結合テスト実装):tmux `send-keys -H` は**キー引数ゼロ
+  なら Enter を送る**。空 `send_hex` は絶対禁止。模型はバイトを送ら
+  ず、driver が送る(`run_prompt` は model-only。呼び出し側が
+  `send_hex` と対で組む)と法則化すると、模型実行のみでペインが
+  起動時ままというケース11 の発散が一目で Identified になった。
 
 - 2026-10-25(本走):プロンプト開放の「おまじなし末尾バイト」は最悪消費を
   越えねばならない。isearch の printable 経路は read_char_eof を通るので、
@@ -230,6 +270,18 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
+- 2026-10-26: 結合テスト(P5-P7)実装一式:this commit。`combination.rs`
+  新規(support 3 層化 core/sess/sanity 併載:mod.rs 経由で tmux_fuzz は
+  sanity を、combination は core+sess のみ+ローカル comb_sane を使用。
+  `Session::last_line` は `core::last_line` へ移し tmux_fuzz 呼び出し側
+  追従)。pbt-run.sh 第 3 段=combination。ci.yml に P5-P7 ステップ。
+  設計文書 02/03/04/05 を実装実態へ更新(sync_in コピー法/run_tail 法/
+  isearch last 法/echo chunk 法/status truncation/tmux -H 法)。
+  実測ローカル全直列:P0 5.5s・P1-P4 164s・P5-P7 196.7s(pbt-run.sh 計
+  6m39s)、e2e 3m42s、release_smoke 22s、すべて rc=0。
+  P5 25 件 59.68s・P6 14 件 28.71s・P7 行列 97.83s・P7b 5.92s
+  (計 183.99s)。emur 本体修正 0 件(発散は全てテスト側ミラー忠実度、
+  新 PBTF なし)。設計文書=コミット 0710208(CI 緑)。
 - 2026-10-25: コードゲート APPROVE-WITH-CHANGES(Blocker 1/Minor 3)。
   Blocker=CI の EMUR_BIN 相対基準(cargo test の CWD=パッケージ dir)→
   `../target/debug/emur` に修正+実測確認(02/05 反映)。Minor=tmux_fuzz

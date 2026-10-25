@@ -48,3 +48,10 @@ jobs:
           # support/mod.rs is CARGO_MANIFEST_DIR-relative = same place.
           EMUR_BIN: "../target/debug/emur"
         run: cargo test --locked -p pbt-test --test tmux_fuzz -- --test-threads=1
+      # P5-P7 full-pane combination (test-design/pbt-design-combination/):
+      # same tmux-serial law, same EMUR_BIN convention (04 §2).
+      - name: P5-P7 full-pane combination (serialized)
+        env:
+          PBT_CASES: "8"
+          EMUR_BIN: "../target/debug/emur"
+        run: cargo test --locked -p pbt-test --test combination -- --test-threads=1

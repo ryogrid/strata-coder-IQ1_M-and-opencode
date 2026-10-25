@@ -17,30 +17,37 @@
 
 `tests/support/` is restructured into THREE layers (design gate J5
 decision, pre-settled here - no artificial uses, MA-2 per-target rule
-honored everywhere):
+honored everywhere). As BUILT: the old `narrow.rs` became `sanity.rs`
+(the two pane_sane variants plus their shared core live together):
 
 | layer | file | pub items | compiled by |
 |---|---|---|---|
-| core (pure) | `support/core.rs` | `PANE_W`, the FOUR `SETTLE_*` constants, `settle`, `cases`, `cfg`, `parse_status`, `pane_tail`, `last_line` (free fn - the `Session::last_line` assoc fn MOVES here; tmux_fuzz call sites adjust) | tmux_fuzz AND combination |
-| sess (tmux) | `support/sess.rs` | `Session` (start/send_hex/send_text/resize/capture/capture_bytes/kill/capture_poll), `sweep_leftovers`, `pane_sane` | tmux_fuzz AND combination |
-| narrow | `support/narrow.rs` | `pane_sane_lax` ONLY (P4's lax status skip) | tmux_fuzz ONLY |
+| core (pure) | `support/core.rs` | `PANE_W`, the FOUR `SETTLE_*` constants, `settle`, `cases`, `cfg`, `parse_status`, `pane_tail`, `last_line` (free fn - the `Session::last_line` assoc fn is GONE; tmux_fuzz imports `support::last_line`) | tmux_fuzz AND combination |
+| sess (tmux) | `support/sess.rs` | `Session` (start/start_size/send_hex/send_text/resize/capture/capture_bytes/kill/capture_poll), `sweep_leftovers`, `tmux`, `tmux_ok`, `emur_bin` | tmux_fuzz AND combination |
+| sanity | `support/sanity.rs` | `pane_sane`, `pane_sane_lax`, `pane_sane_core` (P1/P4 sanity probes) | tmux_fuzz ONLY |
 
-`support/mod.rs` = core + sess + narrow + re-exports, so `tmux_fuzz.rs`
-keeps its `mod support;` + current import paths (edit-free).
-`combination.rs` declares `mod core; #[path = "support/sess.rs"] mod
-sess;` (NOT narrow) and USES EVERY item of both layers it compiles:
+`support/mod.rs` = core + sess + sanity + re-exports, so `tmux_fuzz.rs`
+keeps its `mod support;` + import paths (only the `last_line` call sites
+adjusted). `combination.rs` declares `mod core; #[path = "support/sess.rs"]
+mod sess;` (NOT sanity) and USES EVERY item of both layers it compiles:
 
 - core: `cfg` (proptest configs), `cases` (used inside cfg, module-internal
   use counts), `settle` + ALL FOUR `SETTLE_*` constants (start/burst/
   phase/checkpoint uses), `PANE_W` (row width asserts), `parse_status`
-  (row-23 sanity pre-diff), `pane_tail` + `last_line` (failure reports);
-- sess: `Session::start/send_hex/send_text/capture/capture_bytes/kill`,
-  `capture_poll` (the P6 echo-poll exception, 05 §8), `sweep_leftovers`
-  (used INSIDE `Session::start` - module-internal), `pane_sane` (final
-  P5/P7 sanity), `resize` (P7 SUBMATRIX: selected matrix cells run at
-  60x20 with the grid model PARAMETERIZED by (w, h) - the renderer
-  takes dims as parameters, no constants baked in; a natural,
-  deterministic use of the resize path with no P4 overlap).
+  (status-tail check, guarded by the truncation law, 05 §12),
+  `pane_tail` + `last_line` (failure reports);
+- sess: `Session::start/start_size/send_hex/send_text/capture/capture_bytes/kill`,
+  `capture_poll` (4 tries x 300 ms; the P6 echo-poll, 05 §8/§11),
+  `sweep_leftovers` (used INSIDE `Session::start` - module-internal),
+  `resize` (P7b: 60x20 with the grid model PARAMETERIZED by (w, h) -
+  the renderer takes dims as parameters, no constants baked in),
+  `tmux`/`tmux_ok`/`emur_bin` (module-internal for `Session`).
+
+`pane_sane` is deliberately NOT compiled by combination: its status-TAIL
+parser (P1 law) is INVALID on truncated status rows (long messages cut
+at the pane width, 05 §12), and the full-grid diff every checkpoint is
+strictly stronger. `combination.rs` runs its own local `comb_sane`
+(liveness + no escape litter + width bound).
 Private items (`tmux`, `tmux_ok`, `emur_bin`, statics) need NO use map
 (gate m1). Budget claim corrected per gate m9: the gates job TODAY is
 ~8-12 min (build+clippy+unit+e2e ~5-6 + PBT ~4-5 incl. the ~90 s tmux
@@ -49,10 +56,10 @@ the tail risk is shrink re-runs (`max_shrink_time` 15 s).
 
 ## 2. Runner (`test-design/pbt-run.sh`)
 
-Append a third serial step:
+THIRD serial step (as landed):
 
 ```
-echo "== P5-P7 (combination, tmux, serialized)"
+echo "== P5-P7 (full-pane combination, serialized; pbt-design-combination/04)"
 cargo test --locked -p pbt-test --test combination -- --test-threads=1 || FAILED=1
 ```
 
@@ -61,18 +68,20 @@ suite and no `cargo build` of `target/debug/emur`.
 
 ## 3. CI (`github/workflows/ci.yml`)
 
-Extend the PBT steps in the `gates` job (after the tmux_fuzz step):
+PBT steps in the `gates` job, after the tmux_fuzz step (as landed):
 
 ```
 cargo test --locked -p pbt-test --test combination -- --test-threads=1
 ```
 
 with `PBT_CASES=8` (same env as tmux_fuzz), `EMUR_BIN=../target/debug/emur`
-cwd `pbt-test/` (B-1 pattern). Budget: P5 8 cases x <=4 checkpoints +
-P6 8 + P7 40 sessions x <=9 ops x ~0.35 s + captures ~= 3-5 min;
-current gates job ~5 min -> stays under `timeout-minutes: 20`
-(verified at gate time by a full local `pbt-run.sh` timing report in
-the ledger).
+cwd `pbt-test/` (B-1 pattern). Measured locally (full 25-target suite,
+`--test-threads=1`): P5 25 cases 59.68 s, P6 14 cases 28.71 s, P7 5x8
+matrix 97.83 s, P7b 5.92 s - whole combination target 183.99 s; CI's
+`PBT_CASES=8` shrinks P5/P6 (~90 s total). Measured full local
+`pbt-run.sh`: P0 5.5 s + P1-P4 164 s + P5-P7 197 s = 6m39s wall incl.
+the emur build; gates job estimate stays ~12-17 min against
+`timeout-minutes: 20` (timing report in the TODO-PBT ledger).
 
 ## 4. Triage convention
 
