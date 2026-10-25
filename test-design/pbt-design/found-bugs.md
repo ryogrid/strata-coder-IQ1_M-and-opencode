@@ -34,4 +34,28 @@ Notes: <follow-ups>
 
 ---
 
-(no entries yet)
+## PBTF-001 - buffer.rs header comment overstates the gap-window '\0' padding
+
+- date: 2026-10-25
+- property: P0 (design-gate probe, BEFORE implementation)
+- severity: ux (source-comment documentation)
+- status: NOT-A-BUG
+
+Summary: `src/buffer.rs:2-5` claims "Invariant: chars inside the gap
+window is `'\0'` PADDING, never live text". The "never live text" half is
+the real contract; the "`'\0'` padding" half is aspirational: a gate
+probe (insert + delete_forward + delete_backward on production code)
+found deleted-char residue inside `[gap_start, gap_end)`.
+
+Observed: non-`'\0'` cells inside the gap window after ordinary edits.
+Expected (per comment): all-`'\0'` window.
+Analysis: the residue is unreachable through `text()`/`char_at`/`to_index`
+(logical-position contract); no editor-visible effect. The comment
+overstates the invariant.
+Fix: NOT-A-BUG. P0 asserts window WELL-FORMEDNESS (`gap_start <= gap_end`,
+`len()` identity) plus accessor/naive-model equivalence (03 §P0), not
+window byte content. Softening the comment wording is a docs scrub
+candidate (same class as the TODO-261024 closure entry's scrub list).
+Notes: found by a design-gate probe, not by a suite run.
+
+(no further entries)

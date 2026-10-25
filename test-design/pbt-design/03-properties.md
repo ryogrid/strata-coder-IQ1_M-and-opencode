@@ -28,7 +28,13 @@ and control chars like `'\u{7}'`), `insert_string(s)`, `delete_forward`,
 `end_of_line`, `next_line`, `previous_line`, `beginning_of_buffer`,
 `end_of_buffer`, `insert_newline_after`, `transpose_chars`,
 `kill_to_end_of_line` (the RETURNED cut string is compared too),
-`forward_word`, `backward_word`, `set mark = point` (mirrors `C-SPC`).
+`forward_word`, `backward_word`, `set mark = point` (mirrors `C-SPC`),
+`find_forward(pat, from)` / `find_backward(pat, from)` (read-only; pattern
+pool = ASCII substrings incl. multi-char and absent patterns).
+The op list covers EVERY pub API item of buffer.rs (design gate MA-2):
+the model also reads `name` and `filename` (assert == model values after
+`Buffer::new`), so no pub item is dead-code-warned in the per-target
+include layout (02).
 
 After EVERY op, assert all of:
 
@@ -36,9 +42,16 @@ After EVERY op, assert all of:
 2. `buf.point == ref.point`, `buf.mark == ref.mark`;
 3. `buf.len() == ref.s.len()`, and `char_at(i) == ref.s[i]` for every
    `i < len` (full sweep - O(n), fine at these sizes);
-4. gap-window padding invariant (file header contract: every index in
-   `gap_start..gap_end` holds `'\0'`);
-5. `kill_to_end_of_line` return value == reference cut.
+4. gap-window WELL-FORMEDNESS: `gap_start <= gap_end <= chars.len()` and
+   the `len()` identity (`chars.len() - (gap_end - gap_start)` equals the
+   naive `s.len()`). NOTE (design gate BL-1): the header comment "chars
+   inside the gap window is `'\0'` PADDING" is ASPIRATIONAL - deleted-char
+   residue provably lives in the window; the real contract is "never live
+   text", i.e. no accessor ever exposes the residue (invariants 1+3 check
+   exactly that). Recorded as PBTF-001 (NOT-A-BUG) in found-bugs.md;
+5. `kill_to_end_of_line` return value == reference cut;
+6. `find_forward`/`find_backward` return values == naive substring search
+   (match-END position semantics, `from`-clamping semantics).
 
 Config: 512 cases, `ops` len `1..=200`. No tmux; parallel-safe.
 This property is what hunts gap-arithmetic bugs (`move_gap`,
@@ -61,7 +74,8 @@ Ops: weighted random tokens -
 `0x03` is excluded everywhere: it can open the exit-confirm prompt, and
 a random answer spelling `yes`/`y` would END the session legitimately,
 destroying the liveness invariant (documented, accepted limitation:
-the confirm path is pinned by e2e s140-s142, not fuzzed).
+the confirm path is pinned by e2e s111 (interactive yes/y) plus
+s140/s142 (piped EOF), not fuzzed).
 
 Burst: 1..40 tokens. Suffix: two `-H 07` bytes (C-g; the first cancels
 any open prompt, incl. isearch, and/or lands as the C-x second byte
@@ -108,8 +122,11 @@ Ops (each = one dispatch command, byte encodings exact):
 | `M-<`/`M->` | `1b 3c`/`1b 3e` | `beginning_of_buffer()` / `end_of_buffer()` |
 | arrows U/D/R/L | `1b 5b 41..44` | `previous_line`/`next_line`/`forward_char`/`backward_char` |
 
-Every op except `C-k` sets "last top-level byte" to its own byte, so the
-kill-run accumulation (`prev_cmd == 0x0b`) is reproduced exactly.
+Every op records its TOP-LEVEL lead byte as "last top-level byte" (the
+loop sets `prev_cmd = b` after `sync_out`): a plain key = its own byte,
+meta/arrow ops = `0x1b`, CJK self-insert = the UTF-8 lead byte (>= 0x80),
+C-x ops = `0x18`. Only `0x0b` extends a kill-run and only `C-k` produces
+it, so the accumulation (`prev_cmd == 0x0b`) is reproduced exactly.
 
 Excluded by design: C-c, C-x C-c (quit), C-g, C-s/C-r/C-l (prompts),
 C-q, all window ops, C-x C-f/b/k, C-x C-s. The ONLY prompt command is
@@ -176,7 +193,15 @@ Config: 16 cases, 2..5 bursts + 1..4 resizes.
 ## Config plumbing (all properties)
 
 `ProptestConfig`: `cases = env PBT_CASES (default 24; P0 default 512)`,
-`workers = 1`, `max_concurrent_tests = 1`, `timeout = 10_000` ms,
+`timeout = 10_000` ms, `max_shrink_time = 15_000` ms (shrinking re-runs
+the tmux round-trip; iteration counts are otherwise UNBOUNDED - gate MA-3),
 `failure_persistence = None` (no regression-state files in the repo;
 proptest still prints the failing seed on stderr - record it in
 `found-bugs.md`).
+
+Serial law = `--test-threads=1` on the tmux_fuzz binary (04 §5, 05);
+proptest 1.x HAS NO `workers`/`max_concurrent_tests` fields (gate MA-1).
+NOTE: a non-zero `timeout` implicitly enables FORK mode (each case runs
+in a child process) - accepted: hung cases die at 10 s, and a
+timeout-killed child skips the Drop guard; its leaked `pbt-*` session is
+absorbed by the startup sweep (04 §1).

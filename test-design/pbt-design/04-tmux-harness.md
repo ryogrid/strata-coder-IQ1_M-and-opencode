@@ -29,7 +29,13 @@ would warn, so split shared code as needed - gate: zero warnings).
   does not abort, Drop runs).
 - Startup sweep (once per test process, `std::sync::Once`): list
   sessions (`tmux list-sessions -F '#{session_name}'`), kill every name
-  starting with `pbt-` (leftovers from killed runners).
+  starting with `pbt-` (leftovers from killed runners; this also absorbs
+  the sessions leaked by proptest fork-mode children killed on
+  `timeout` - their Drop guards never run, 03 Config plumbing).
+- The `sh -c '...'` wrapper stays shell-safe only while argv contains no
+  `'` characters: true by construction (`/tmp/emur-pbt-<pid>-<id>...`
+  fixed pattern, pid <= 7 digits, counter small; outpath ~34 chars,
+  worst status line ~56 cols < 80).
 
 ## 2. Sending keys
 
@@ -59,8 +65,9 @@ confirm-exit prompt gets `""` => not "yes" => stays alive).
   `trim_end()` applied for text assertions (matches the e2e `cap`).
 - `poll_capture(name, |s| pred)`: 3 attempts, 0.3 s apart (last-resort
   for the status-line regex on slow runners; bursts+settle make it rare).
-- Pane width check: `capture` returns lines padded to the pane width;
-  assert `line.chars().count() <= width`.
+- Pane width check: tmux 3.4 `capture-pane -p` TRIMS trailing padding
+  (gate probe: max line 63/80 on an 80-col pane), so
+  `line.chars().count() <= pane width` is a valid upper bound.
 
 ## 5. Serial discipline (repo law, extended to PBT)
 
@@ -74,9 +81,11 @@ of the following may run concurrently:
 - edits to the running script.
 
 Mechanics: `pbt-run.sh` is the single entry point; the `tmux_fuzz`
-binary runs with `--test-threads=1`, `workers=1`, `max_concurrent_tests=1`.
-`buffer_model` (P0) is tmux-free and may run in parallel (it never
-touches the binary). CI runs all suite steps sequentially in one job.
+binary runs with `--test-threads=1` (proptest 1.x has NO `workers` /
+`max_concurrent_tests` fields - gate MA-1; fork-mode cases are
+per-case serial under the single libtest thread). `buffer_model` (P0)
+is tmux-free and may run in parallel (it never touches the binary).
+CI runs all suite steps sequentially in one job.
 
 ## 6. Timing and budgets
 

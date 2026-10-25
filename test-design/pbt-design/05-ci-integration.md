@@ -11,9 +11,10 @@ default-members = ["."]
 ```
 
 so every EXISTING root command (`cargo build/test/clippy` at repo root)
-keeps operating on `emur` only - the existing CI gate steps need no
-change, and the tmux PBT binaries can never sneak into a parallel
-default `cargo test`.
+keeps operating on `emur` ONLY (design-gate probe: `cargo test` at root
+ran the 42 emur unit tests, never the pbt binaries). The existing CI
+gate steps need no change and no `-p emur` flag, and the tmux PBT
+binaries can never sneak into a parallel default `cargo test`.
 
 ## New CI steps (single `gates` job, appended after the e2e step)
 
@@ -36,8 +37,9 @@ the tmux non-concurrency law (04 §5) for free:
 
 Notes:
 
-- the e2e step already runs `cargo build` (debug `emur` exists) and tmux
-  is preinstalled on ubuntu runners;
+- the debug `emur` exists from the CI **build step** (e2e.sh itself never
+  invokes cargo), and tmux is preinstalled on ubuntu runners (the e2e
+  step proves it every run);
 - `EMUR_BIN` is relative to the job's working dir (repo root) -
   `Command::new` resolves it fine;
 - `PBT_CASES=8` keeps the tmux PBT step near 90 s;
@@ -46,8 +48,12 @@ Notes:
   `cargo build --locked -p pbt-test --all-targets` and the deviation is
   recorded in `TODO-PBT.md`; the clippy step (lints own crates only)
   keeps `-D warnings` regardless;
-- `Cargo.lock` (root, workspace-wide) must be committed with the
-  proptest tree; CI uses `--locked`.
+- `Cargo.lock`: a workspace member has NO package-local lock; the ROOT
+  lock gains the proptest tree and must be committed (gate probe
+  verified); CI uses `--locked` everywhere. The EXISTING gate steps
+  (build/clippy/unit at root, no `-p` flags) stay unchanged and are
+  pinned to emur by `default-members = ["."]` (02) - the tmux PBT
+  binaries can never join the parallel default-thread unit-test step.
 
 ## Local entry point
 

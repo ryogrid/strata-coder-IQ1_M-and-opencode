@@ -21,11 +21,15 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## Phase A: 設計(DOC 先行)
 
-- [ ] A1 `test-design/pbt-design/` に設計文書 7 点を書く
+- [x] A1 `test-design/pbt-design/` に設計文書 7 点を書く
       (README / 01 overview / 02 package / 03 properties / 04 tmux harness /
-      05 CI / found-bugs 雛形)
-- [ ] A2 設計ゲート(サブエージェント)を HEAD 実装と照合して実行
-- [ ] A3 ゲート指摘(Blocker/Major/Minor)を文書に織り込み、台帳に記録
+      05 CI / found-bugs 雛形)(コミット a616eaa)
+- [x] A2 設計ゲート(サブエージェント)を HEAD 実装と照合して実行
+      → APPROVE-WITH-CHANGES(Blocker 1/Major 4/Minor 10、実 tmux・実 scratch
+      workspace・proptest 1.12 ソース読みによる検証付き)
+- [x] A3 ゲート指摘(Blocker/Major/Minor)を全件織り込み(01-05・found-bugs
+      更新)。Blocker=gap window の `'\0'` padding 主張は実測で偽
+      → 構造不変条件に置換、found-bugs に PBTF-001(NOT-A-BUG)記録
 
 ## Phase B: テスト基盤
 
@@ -70,6 +74,21 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 学習記録
 
+- 2026-10-25(設計ゲート):ゲートが scratch workspace で実証してくれた 3 件は
+  文書レビューの理想形。(1) proptest の設定名を当てるな、ソースを見ろ
+  (`workers` 等は proptest 1.x に存在しない。直列化のレバーは libtest の
+  `--test-threads=1` と fork モードの子直列のみ)。(2) 「include して使えば
+  警告ゼロ」は成立しない:bin crate 免除の clippy lint が lib crate で発火し、
+  逆に target 別 include だと未使用 pub API が dead_code になる。
+  「pub API 全網羅+モデルが全 field を読む」という制約を P0 に埋め込んで
+  解決=制約をテストに刻印する設計。(3) ソースコードの不変条件コメントは
+  実測对象(`'\0'` padding 主張は削除残字符で偽。真の契約は「ライブテキストが
+  窓に露出しない」こと)。
+- 2026-10-25(設計ゲート):`timeout` を持つ PBT は fork モードになり、
+  子殺しは Drop ガードを飛ばす。セッション名を固定プレフィックスにして
+  プロセス起動時に自前掃討する設計が、ガード不能の漏れを吸収する唯一の
+  安全網になる(tmux 系テストの一般形として)。
+
 - 2026-10-25(設計前):参考資料の実装イメージ(tmux を 1 キーごとに
   起動し sleeps で待つ素朴構成)は e2e 実測の反面教師になった。
   emur の e2e(harness 1-53 行)で実証済みの方式=セッション 1 個+
@@ -95,4 +114,16 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
-- 2026-10-25: TODO-PBT 作成+設計文書 7 点(このコミット)。設計ゲートは次。
+- 2026-10-25: TODO-PBT 作成+設計文書 7 点(コミット a616eaa)。
+- 2026-10-25: 設計ゲート APPROVE-WITH-CHANGES 全件織り込み(このコミット)。
+  Blocker: gap window `'\0'` 不変条件は実測で崩れる(削除残字符が窓内に入る)
+  → P0 は「窓の健全性+acc 等価」に置換し PBTF-001(NOT-A-BUG)登記。
+  Major: proptest 1.x に `workers`/`max_concurrent_tests` は存在せず
+  (直列化は `--test-threads=1` のみ)、`timeout>0` は fork モードを暗黙有効化
+  (fork 子殺しのセッション漏れは起動時掃討が吸収)、`max_shrink_time` 指定で
+  シュリンク走を節約、lib.rs include は clippy `len_without_is_empty` で落ち、
+  target 別 include は未使用 pub API が dead_code になるため P0 op list を
+  pub API 全網羅(find 2 件+name/filename 読み)に。
+  Minor: e2e 引用は s111+s140/s142、capture は末尾余白 trim、ルート CI
+  ステップは `default-members` で不変(探针確認)、proptest 1.12×rustc 1.99 の
+  `RUSTFLAGS=-D warnings` は绿灯(ゲート免除条項は休眠)。

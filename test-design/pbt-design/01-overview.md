@@ -38,7 +38,7 @@ the gap-buffer algorithmic bugs, at 1000x the speed, no tmux.
 
 | ID | Kind | Target | Main invariant |
 |---|---|---|---|
-| P0 | in-process | gap buffer ops | text/point/mark == naive model after every op; gap invariants hold |
+| P0 | in-process | gap buffer ops | text/point/mark == naive model after every op; gap window well-formed (structural, 03 §P0-4) |
 | P1 | tmux | random raw bytes (no quit) | session alive, no panic text, no escape litter, status line well-formed |
 | P2 | tmux | restricted editing alphabet, seeded file | saved file == model text; status line == model-computed line/total/pct |
 | P3 | tmux | window-op random walk | split/collapse boundary structure exact; no buffer-content dashes |
@@ -57,9 +57,8 @@ the gap-buffer algorithmic bugs, at 1000x the speed, no tmux.
 
 ## Timing budget
 
-tmux properties cost ~1.2-2.5 s/case (session start 0.6 s + burst +
-settle). Defaults: P1 24 cases, P2 24, P3 16, P4 16 (~2.5-3 min total,
-serial). P0 is 512 cases in milliseconds. Case counts scale via
+tmux properties cost ~2.0-3.5 s/case (per-property table in 04 §6).
+Defaults: P1 24 cases, P2 24, P3 16, P4 16 (~3.5 min total, serial). P0 is 512 cases in milliseconds. Case counts scale via
 `PBT_CASES` (CI uses 8). Shrinking runs the tmux round-trip per shrunk
 case; that is accepted (shrinks are few and short).
 
@@ -67,11 +66,11 @@ case; that is accepted (shrinks are few and short).
 
 | Risk | Mitigation |
 |---|---|
-| flaky timing (render races) | settle 0.6 s after every burst (e2e-proven STEP-based value), poll-capture helper (3 x 0.3 s) for status-line checks |
+| flaky timing (render races) | the settle law (04 §6): 0.6 s session start, 0.8 s after P1/P2 bursts, 0.4 s P2 write-phase/P4 resizes, 0.5 s P3 checkpoints (e2e STEP=0.4 provenance), poll-capture helper (3 x 0.3 s) for status-line checks |
 | tmux session collisions | unique names `pbt-<pid>-<seq>`, Drop guard kills, startup sweep of `pbt-*` leftovers, serial rules (04 §5) |
 | proptest dep tree + `RUSTFLAGS=-D warnings` on rustc 1.99 | verify at scaffold time; if a third-party crate warns under `-D warnings`, keep `-D warnings` for the emur-root gates and gate pbt-test with plain `cargo build`/`clippy` + zero-warning grep (document the deviation in TODO-PBT.md) |
 | model mirror drift (P2) | mapping table in 03 §P2 reviewed against `src/main.rs` dispatch arm-by-arm at design gate and code gate; e2e already pins each command individually |
-| CPU contention flakes | workers=1, max_concurrent_tests=1, `--test-threads=1` for the tmux test binary, no concurrent suites |
+| CPU contention flakes | `--test-threads=1` for the tmux test binary (proptest 1.x has no worker knobs - gate MA-1), fork-mode cases serial under the single libtest thread, no concurrent suites |
 | bug triage cost | every failure: reproduce by hand (replay script), root-cause (model drift vs real bug) recorded in found-bugs.md before any fix |
 
 ## Gate discipline (repo conventions that apply here)
