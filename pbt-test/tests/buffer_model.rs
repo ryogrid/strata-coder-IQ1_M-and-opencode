@@ -11,7 +11,7 @@ use proptest::prelude::*;
 #[path = "../../src/buffer.rs"]
 mod buffer;
 
-use buffer::{is_word_char, Buffer};
+use buffer::{is_word_char, Buffer, UndoState};
 
 // Naive text model: plain Vec<char>, same point/mark contracts.
 struct Ref {
@@ -237,6 +237,14 @@ impl Ref {
     fn text(&self) -> String {
         self.s.iter().collect::<String>()
     }
+    // restore mirror (T-9 C-/): full rebuild, clamped positions, marked
+    fn restore(&mut self, st: &UndoState) {
+        self.s = st.text.chars().collect();
+        let n = self.s.len();
+        self.point = st.point.min(n);
+        self.mark = st.mark.min(n);
+        self.modified = true;
+    }
 }
 
 
@@ -267,15 +275,21 @@ enum Op {
     FindF(String, usize),
     FindB(String, usize),
     MoveGap(usize),
+    // T-9 undo pair: snapshot() fidelity check, then restore() of a
+    // stored pair (LIFO order is NOT enforced: restore() takes ANY
+    // state, and the full-state sweep verifies b == r after it).
+    Snap,
+    Restore(usize),
 }
 
 #[derive(Default)]
 struct Ret {
     cut: Option<(String, String)>,           // buffer vs ref kill cuts
     find: Option<(Option<usize>, Option<usize>)>, // buffer vs ref find result
+    snap: Option<(UndoState, UndoState)>,    // snapshot() vs ref-built state
 }
 
-fn apply(b: &mut Buffer, r: &mut Ref, op: &Op) -> Ret {
+fn apply(b: &mut Buffer, r: &mut Ref, op: &Op, snaps: &mut Vec<(UndoState, UndoState)>) -> Ret {
     let mut ret = Ret::default();
     match op {
         Op::Ins(c) => {
@@ -378,6 +392,22 @@ fn apply(b: &mut Buffer, r: &mut Ref, op: &Op) -> Ret {
             let p = *pos;
             let p = if p > b.len() { b.len() } else { p };
             b.move_gap(p);
+        }
+        Op::Snap => {
+            // store the pair, and report the buffer snapshot vs a
+            // ref-built state (snapshot() fidelity: text/point/mark
+            // read through the gap layout must equal the model's)
+            let sb = b.snapshot();
+            let sr = UndoState { text: r.text(), point: r.point, mark: r.mark };
+            snaps.push((sb.clone(), sr.clone()));
+            ret.snap = Some((sb, sr));
+        }
+        Op::Restore(idx) => {
+            if !snaps.is_empty() {
+                let (sb, sr) = snaps.remove(*idx % snaps.len());
+                b.restore(&sb);
+                r.restore(&sr);
+            }
         }
     }
     ret
@@ -485,6 +515,8 @@ fn arb_ops() -> impl Strategy<Value = Vec<Op>> {
         3 => (pat_pool(), 0usize..40).prop_map(|(p, f)| Op::FindF(p, f)),
         3 => (pat_pool(), 0usize..40).prop_map(|(p, f)| Op::FindB(p, f)),
         2 => (0usize..40).prop_map(Op::MoveGap),
+        2 => Just(Op::Snap),
+        3 => (0usize..12).prop_map(Op::Restore),
     ];
     prop::collection::vec(one, 1..=200usize)
 }
@@ -506,13 +538,17 @@ proptest! {
         prop_assert!(!b.modified);
         prop_assert_eq!(b.text(), seed_s);
 
+        let mut snaps: Vec<(UndoState, UndoState)> = vec![];
         for (i, op) in ops.iter().enumerate() {
-            let ret = apply(&mut b, &mut r, op);
+            let ret = apply(&mut b, &mut r, op, &mut snaps);
             if let Some((kb, kr)) = ret.cut {
                 prop_assert_eq!(kb, kr, "op{} {:?}: kill cut", i, op);
             }
             if let Some((fb, fr)) = ret.find {
                 prop_assert_eq!(fb, fr, "op{} {:?}: find result", i, op);
+            }
+            if let Some((sb, sr)) = ret.snap {
+                prop_assert_eq!(sb, sr, "op{} {:?}: snapshot fidelity", i, op);
             }
             let fail = check(&b, &r);
             prop_assert!(fail.is_none(), "op{} {:?}: {}", i, op, fail.unwrap_or_default());

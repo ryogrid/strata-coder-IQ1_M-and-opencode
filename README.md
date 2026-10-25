@@ -10,7 +10,10 @@ Repo layout:
 |------|----------|
 | `src/` | `main.rs` (key dispatch), `buffer.rs` (gap buffer), `window.rs` (window tree), `screen.rs` (rendering), `terminal.rs` (raw I/O), `highlight.rs` (syntax highlighting) |
 | `design/` | design docs + task tracker |
-| `test-design/` | end-to-end test design doc + tmux-driven harness |
+| `test-design/` | end-to-end test design doc + tmux-driven harness; `pbt-design/` property-test design; `pbt-run.sh` serial PBT entry point |
+| `pbt-test/` | property-based test crate (proptest P0-P4, `#[path]` includes of `src/buffer.rs`) |
+| `docs/` | dev-environment snapshot, design deep-dives (CJK width, keymap dispatch table) |
+| `review/` | review finding docs (Japanese, task ledgers) |
 
 ## Development environment
 
@@ -23,7 +26,9 @@ Toolchain:
 
 - Rust: `rustc 1.99.1`, `cargo 1.99.1`, language edition 2021.
   Direct dependencies: `termsize` 0.1.9 (terminal SIZE query only —
-  rendering is hand-written ANSI escapes), `termios` 0.3.3 (POSIX tty).
+  rendering is hand-written ANSI escapes), `termios` 0.3.3 (POSIX tty),
+  `libc` 0.2 (signal handlers: SIGTERM/SIGHUP/SIGINT/SIGQUIT terminal
+  restore).
 
 Runtime requirements:
 
@@ -46,8 +51,9 @@ Runtime requirements:
 ```sh
 cargo build              # debug build -> target/debug/emur
 cargo build --release    # optimized build -> target/release/emur
-cargo test               # unit tests (gap-buffer data model)
+cargo test               # root unit tests (gap buffer, keymap, window, undo stack)
 bash test-design/e2e.sh  # end-to-end tmux harness (requires tmux)
+bash test-design/pbt-run.sh  # property tests P0-P4 (tmux; serial law - no other tmux suite/cargo build while running)
 ```
 
 Run the editor from a real terminal:
@@ -82,6 +88,17 @@ Run the editor from a real terminal:
   end of line and stops at the region mark when it is ahead on the line;
   consecutive `C-k`s accumulate the killed text (newline included) and any
   other command ends the run; `C-y` pastes the killed text back at point.
+- **Undo** — `C-/` (`0x1f`; xterm-family terminals send `Ctrl+/` and
+  `Ctrl+_` as this same byte) restores the last change: text, point and
+  mark all return, and the buffer is marked modified (an undo is a change
+  relative to the file). Consecutive typing (self-insert, `C-j`/`C-m`,
+  `C-q`) is ONE undo group, consecutive `C-k` kills are ONE group, and
+  any other command breaks the run, so one `C-/` steps back one run.
+  The history is bounded (last 200 groups); the stack is editor-global
+  (each entry belongs to the buffer that recorded it, so after a buffer
+  switch `C-/` can step back into the other buffer's state); `C-x k` drops the entries of
+  the killed buffer; with nothing to undo the echo reads
+  `No change to undo`.
 - **Regions** — `C-@` (`C-space`, NUL) sets the mark at point; when the
   mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the
   region edge. For `C-k` the edge is a mark AHEAD of point; a mark
@@ -163,9 +180,10 @@ Run the editor from a real terminal:
 - **Status line** — the bottom row always shows `Buf <name> <line>/<total>
   (<pct>%)`: the point position (1-based line out of total, percent of
   buffer length); a `*` before the position marks the buffer as modified;
-  a transient message (`Wrote file`, `Cancelled`, `Search string not
-  found: q`, `Invalid line number: x`, …) replaces the status line for one
-  frame.
+  a message (`Wrote <path>`, `Cancelled`, `Undo`, `No change to undo`,
+  `Search string not found: q`, `Invalid line number: x`, …) replaces
+  the status line and STAYS until a later command sets its own message
+  (commands that set none — motions, typing, kills — leave it standing).
 - **Quit and exit confirmation** — `C-x C-c`/`C-c` quit; if any buffer has
   unsaved modifications, the editor first asks `Modified buffers exist;
   exit anyway? (yes|no)` in the minibuffer and only `yes` (or `y`) exits,
@@ -182,7 +200,7 @@ Run the editor from a real terminal:
 - **Syntax highlighting** — automatic, no key: the language is detected
   from the buffer/file-name extension; keywords cyan, strings magenta,
   comments green, numbers blue, markdown headings and HTML tags bold cyan.
-  Extensions: `rs c cpp h js ts go css` (`//` and `/* */` comments),
+  Extensions: `rs c h cpp cc hpp js ts go css` (`//` and `/* */` comments),
   `py sh rb yaml toml` (`#` comments, Python `"""..."""`), `json`,
   `md`/`markdown`, `html`/`xml` (`<!-- -->`); anything else (e.g. `txt`,
   `*demo*`) stays plain. Comments and multi-line strings are matched over
@@ -211,6 +229,7 @@ Run the editor from a real terminal:
 | `C-t` | transpose chars around point |
 | `C-k` | kill to end of line (stops at the region mark when it is ahead on the line) |
 | `C-y` | paste killed text at point (consecutive `C-k`s accumulate, including the newline) |
+| `C-/` | undo: restore the last change (text + point + mark, buffer marked modified); consecutive typing = one group, consecutive `C-k` = one group, any other command breaks the run; bounded to 200 groups; `C-x k` clears the buffer's entries; echo `Undo` / `No change to undo` (arrives as byte `0x1f`, the same code `C-_` sends) |
 | `C-@` (`C-space`, NUL) | set the mark at point (start a region); when mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the region edge |
 | `C-q` | quote: insert next key literally |
 | `C-x C-f` | open file in a new split window below (buffer name = path, status shows it; an existing buffer for that file is reused, not reloaded; prompt in the bottom row, end with Enter; Tab completes a path from the directory listing) |

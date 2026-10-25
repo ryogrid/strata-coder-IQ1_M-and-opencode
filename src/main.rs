@@ -103,11 +103,62 @@ struct Ed {
     // documents exactly this "any other command ends the run".
     prev_cmd: u8,
     moved: bool,
+    // T-9: C-/ undo. The stack lives HERE (grouping is a dispatch-level
+    // concern); buffer.rs owns the snapshot/restore mechanics.
+    undo: Vec<UndoEntry>,
+    // A change-RUN stays alive while consecutive commands share the same
+    // group tag: `touched` marks the CURRENT iteration as a pusher, and
+    // any command that never pushes (motions, C-SPC, window ops, the
+    // undo itself) breaks the run at the loop BOTTOM.
+    group_alive: bool,
+    touched: bool,
+}
+
+// One undo entry: the pre-change full state of buffer `bi` plus the
+// group tag (1 = typing run, 2 = kill run, 0 = ungrouped change).
+struct UndoEntry {
+    bi: usize,
+    tag: u8,
+    st: buffer::UndoState,
 }
 
 impl Ed {
     fn bi(&self) -> usize {
         self.tree.leaves[self.active].buffer
+    }
+
+    // T-9 (C-/ undo): push the PRE-change state. tag 1 = typing run
+    // (self-insert/quote/newline), tag 2 = kill run (consecutive C-k),
+    // tag 0 = ungrouped change. One snapshot per run: while the
+    // consecutive same-tag change stands (group_alive was set by the
+    // PREVIOUS iteration's command - the loop top breaks it for every
+    // other command), the run's FIRST pre-state stays on the stack.
+    fn push_entry(&mut self, bi: usize, tag: u8, st: buffer::UndoState) {
+        let merge = tag != 0
+            && self.group_alive
+            && self.undo.last().is_some_and(|e| e.tag == tag && e.bi == bi);
+        self.touched = true;
+        self.group_alive = true;
+        if merge {
+            return;
+        }
+        self.undo.push(UndoEntry { bi, tag, st });
+        if self.undo.len() > 200 {
+            self.undo.remove(0); // bounded history (Emacs caps per-buffer)
+        }
+    }
+
+    fn undo(&mut self) {
+        self.group_alive = false;
+        match self.undo.pop() {
+            Some(e) => {
+                self.bufs[e.bi].restore(&e.st);
+                self.msg = "Undo".to_string();
+            }
+            None => {
+                self.msg = "No change to undo".to_string();
+            }
+        }
     }
 
     fn frame(&mut self) {
@@ -287,7 +338,11 @@ impl Ed {
         if !path.is_empty() {
             match read_file(&path) {
                 Ok(text) => {
+                    let pre = self.bufs[bi].snapshot(); // T-9
                     self.bufs[bi].insert_string(&text);
+                    if self.bufs[bi].text() != pre.text {
+                        self.push_entry(bi, 0, pre); // empty file: no entry
+                    }
                     self.msg = format!("Inserted file {}", path);
                 }
                 Err(e) => {
@@ -317,6 +372,7 @@ impl Ed {
             self.bufs[bi] = buffer::Buffer::new(name.clone(), "");
             self.bufs[bi].filename = None;
             self.bufs[bi].modified = false;
+            self.undo.retain(|e| e.bi != bi); // T-9: killed content is gone
             // M-15: leaves ALIASING this buffer (C-x 2/C-x 3/C-x C-f
             // reuse keep point/mark/scroll per leaf) keep positions
             // from the killed content: reset EVERY leaf showing bi,
@@ -531,27 +587,45 @@ impl Ed {
 
     fn delete_backward(&mut self) {
     let bi = self.bi();
+        let pre = self.bufs[bi].snapshot();
         self.bufs[bi].delete_backward(); // backspace (DEL)
+        if self.bufs[bi].text() != pre.text {
+            self.push_entry(bi, 0, pre); // T-9 (no-op at point 0: no entry)
+        }
     }
 
     fn delete_forward(&mut self) {
     let bi = self.bi();
+        let pre = self.bufs[bi].snapshot();
         self.bufs[bi].delete_forward(); // Ctrl-d
+        if self.bufs[bi].text() != pre.text {
+            self.push_entry(bi, 0, pre); // T-9 (no-op at end: no entry)
+        }
     }
 
     fn open_line(&mut self) {
     let bi = self.bi();
+        let pre = self.bufs[bi].snapshot();
         self.bufs[bi].insert_newline_after(); // Ctrl-o
+        self.push_entry(bi, 0, pre); // T-9: always inserts
     }
 
     fn transpose_chars(&mut self) {
     let bi = self.bi();
+        let pre = self.bufs[bi].snapshot();
         self.bufs[bi].transpose_chars(); // Ctrl-t
+        if self.bufs[bi].text() != pre.text {
+            self.push_entry(bi, 0, pre); // T-9
+        }
     }
 
     fn kill_line(&mut self) {
     let bi = self.bi();
+        let pre = self.bufs[bi].snapshot(); // T-9: kill-run group (tag 2)
         let cut = self.bufs[bi].kill_to_end_of_line();
+        if self.bufs[bi].text() != pre.text {
+            self.push_entry(bi, 2, pre);
+        }
     if self.prev_cmd == 0x0b {
         self.killed.push_str(&cut); // consecutive kills accumulate
     } else {
@@ -561,7 +635,11 @@ impl Ed {
 
     fn yank(&mut self) {
     let bi = self.bi();
+        let pre = self.bufs[bi].snapshot();
         self.bufs[bi].insert_string(&self.killed);
+        if self.bufs[bi].text() != pre.text {
+            self.push_entry(bi, 0, pre); // T-9 (empty kill-ring: no entry)
+        }
     }
 
     fn end_of_line(&mut self) {
@@ -618,24 +696,34 @@ impl Ed {
         // NB: at EOF the leading byte arrives as 0 (read_byte), which is
     // Ctrl-space's NUL - a literal NUL gets inserted once. Bounded:
     // the loop-top read_byte_eof then ends the session. (Design Doc A)
+    let pre = self.bufs[bi].snapshot(); // T-9: typing group (tag 1)
     let n = terminal::read_byte();
     if let Some(c) = terminal::read_char_eof(n) {
         self.bufs[bi].insert_char(c);
     } // EOF: insert nothing
+    if self.bufs[bi].text() != pre.text {
+        self.push_entry(bi, 1, pre);
+    }
     }
 
     fn newline(&mut self) {
     let bi = self.bi();
+        let pre = self.bufs[bi].snapshot(); // T-9: typing group (tag 1)
         self.bufs[bi].insert_char('\n'); // Ctrl-j / Ctrl-m: newline
+        self.push_entry(bi, 1, pre);
     }
 
     fn self_insert(&mut self, b: u8) {
     let bi = self.bi();
         // self-insert (ASCII, and UTF-8 lead bytes: read_char_eof consumes
     // the continuation bytes)
+    let pre = self.bufs[bi].snapshot(); // T-9: typing group (tag 1)
     if let Some(c) = terminal::read_char_eof(b) {
         self.bufs[bi].insert_char(c);
     } // EOF: insert nothing
+    if self.bufs[bi].text() != pre.text {
+        self.push_entry(bi, 1, pre);
+    }
     }
 }
 fn main() {
@@ -674,6 +762,9 @@ fn main() {
         killed: "".to_string(),
         prev_cmd: 0,
         moved: false,
+        undo: vec![],
+        group_alive: false,
+        touched: false,
     };
     loop {
         ed.frame();
@@ -684,6 +775,7 @@ fn main() {
         }
         let b = rb[0];
         ed.moved = false;
+        ed.touched = false; // T-9: a command that pushes re-arms the run
         // The TOP dispatch is exhaustive over Cmd (no `_`): a new variant
         // breaks the build here (Design Doc D §3.1). Byte-map sub-matches
         // carry `_ => {}` for variants their byte map cannot produce.
@@ -751,6 +843,7 @@ fn main() {
             Cmd::TransposeChars => ed.transpose_chars(),
             Cmd::KillLine => ed.kill_line(),
             Cmd::Yank => ed.yank(),
+            Cmd::Undo => ed.undo(), // T-9: C-/ (0x1f)
             Cmd::EndOfLine => ed.end_of_line(),
             Cmd::GotoLine => ed.goto_line(),
             Cmd::QuoteInsert => ed.quote_insert(),
@@ -769,7 +862,152 @@ fn main() {
             Cmd::DeleteOtherWindows | Cmd::SplitBelow => {}
             Cmd::SplitRight | Cmd::OtherWindow => {}
         }
+        if !ed.touched {
+            ed.group_alive = false; // T-9: non-change command breaks the run
+        }
         ed.sync_out();
         ed.prev_cmd = b;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T-9: undo stack semantics at the dispatch level (the tmux e2e
+    // scenario s161 pins the visible behavior; these pin the grouping).
+    fn ed_with(text: &str) -> Ed {
+        Ed {
+            bufs: vec![buffer::Buffer::new("t", text)],
+            tree: window::new_tree(0),
+            active: 0,
+            msg: String::new(),
+            killed: String::new(),
+            prev_cmd: 0,
+            moved: false,
+            undo: vec![],
+            group_alive: false,
+            touched: false,
+        }
+    }
+
+    // One loop iteration of a TYPING command (mirrors self_insert + the
+    // loop-bottom group break).
+    fn key_type(ed: &mut Ed, c: char) {
+        ed.touched = false;
+        let bi = ed.bi();
+        let pre = ed.bufs[bi].snapshot();
+        ed.bufs[bi].insert_char(c);
+        if ed.bufs[bi].text() != pre.text {
+            ed.push_entry(bi, 1, pre);
+        }
+        if !ed.touched {
+            ed.group_alive = false;
+        }
+    }
+
+    // One loop iteration of a KILL command (tag 2).
+    fn key_kill(ed: &mut Ed) {
+        ed.touched = false;
+        let bi = ed.bi();
+        let pre = ed.bufs[bi].snapshot();
+        ed.bufs[bi].kill_to_end_of_line();
+        if ed.bufs[bi].text() != pre.text {
+            ed.push_entry(bi, 2, pre);
+        }
+        if !ed.touched {
+            ed.group_alive = false;
+        }
+    }
+
+    // One loop iteration of a NON-change command (motion: breaks the run).
+    fn key_motion(ed: &mut Ed) {
+        ed.touched = false;
+        let bi = ed.bi();
+        ed.bufs[bi].beginning_of_line();
+        if !ed.touched {
+            ed.group_alive = false;
+        }
+    }
+
+    #[test]
+    fn undo_typing_run_is_one_group() {
+        let mut ed = ed_with("ab");
+        key_type(&mut ed, 'X');
+        key_type(&mut ed, 'Y');
+        key_type(&mut ed, 'Z');
+        assert!(ed.undo.len() == 1); // consecutive typing merges
+        ed.undo();
+        assert!(ed.bufs[0].text() == "ab");
+        assert!(ed.msg == "Undo");
+    }
+
+    #[test]
+    fn undo_kill_run_is_one_group() {
+        let mut ed = ed_with("one\ntwo");
+        key_kill(&mut ed); // kills "one" (text "\ntwo")
+        key_kill(&mut ed); // kills the newline (text "two")
+        assert!(ed.undo.len() == 1);
+        ed.undo();
+        assert!(ed.bufs[0].text() == "one\ntwo");
+    }
+
+    #[test]
+    fn motion_breaks_the_group() {
+        // MOTION AT THE POINT: C-b from 2 to 1 does not touch text, so
+        // the loop-bottom rule breaks the typing run and the next
+        // insert starts a FRESH group (2 entries).
+        let mut ed = ed_with("ab");
+        key_type(&mut ed, 'X'); // point 0 -> 1
+        key_motion(&mut ed); // C-a: point 1 -> 0 (no text, run breaks)
+        key_type(&mut ed, 'Y'); // fresh group at point 0
+        assert!(ed.undo.len() == 2);
+        ed.undo(); // pops the Y-entry (pre = "Xab")
+        assert!(ed.bufs[0].text() == "Xab");
+        ed.undo(); // pops the X-entry (pre = "ab")
+        assert!(ed.bufs[0].text() == "ab");
+    }
+
+    #[test]
+    fn undo_restores_point_mark_and_marks_modified() {
+        let mut ed = ed_with("alpha");
+        ed.bufs[0].point = 2;
+        ed.bufs[0].mark = 1;
+        ed.bufs[0].modified = false;
+        key_type(&mut ed, 'Q');
+        ed.undo();
+        assert!(ed.bufs[0].point == 2);
+        assert!(ed.bufs[0].mark == 1);
+        assert!(ed.bufs[0].modified); // undo is a change vs the file
+    }
+
+    #[test]
+    fn undo_empty_stack_reports_no_change() {
+        let mut ed = ed_with("ab");
+        ed.undo();
+        assert!(ed.msg == "No change to undo");
+    }
+
+    #[test]
+    fn undo_history_is_bounded() {
+        let mut ed = ed_with("");
+        for i in 0..250u32 {
+            key_motion(&mut ed);
+            key_type(&mut ed, (b'a' + (i % 26) as u8) as char);
+        }
+        assert!(ed.undo.len() <= 200);
+    }
+
+    #[test]
+    fn noop_change_pushes_no_entry() {
+        let mut ed = ed_with("ab");
+        ed.touched = false;
+        let bi = ed.bi();
+        let pre = ed.bufs[bi].snapshot();
+        ed.bufs[bi].delete_backward(); // point 0: nothing deleted
+        if ed.bufs[bi].text() != pre.text {
+            ed.push_entry(bi, 0, pre);
+        }
+        assert!(ed.undo.is_empty());
     }
 }

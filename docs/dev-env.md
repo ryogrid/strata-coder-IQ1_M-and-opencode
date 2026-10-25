@@ -25,7 +25,7 @@ only. Snapshot date: 2026-10.
 
 ## Coding agent
 
-- OpenCode v1.18.31.
+- OpenCode v2.1.4.
 - Model (as configured at snapshot time): Qwen3.8-Flash-Next Coder
   IQ1_M (Strata) — model ID `strata/qwen3.8-flash-next-coder`, served
   by Strata; configured in `opencode.json` under the display name

@@ -34,6 +34,7 @@ Legend: `C-x` = Ctrl-x, `M-x` = Meta/Esc-x.
 | `C-o` | `insert-newline-after` |
 | `C-t` | `transpose-chars` (no-op at the buffer start: no char before point) |
 | `C-k` | `kill-to-end-of-line` |
+| `C-/` (`0x1f`, the `C-_` code) | `undo`: pop the change-run stack (text+point+mark restored, buffer marked modified; consecutive typing / consecutive `C-k` each merge to ONE group, any non-change command breaks the run; 200-entry cap; `C-x k` drops the buffer's entries) |
 | `C-d` | `delete-forward` |
 | `DEL` (backspace) | `delete-backward` |
 

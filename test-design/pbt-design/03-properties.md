@@ -30,7 +30,11 @@ and control chars like `'\u{7}'`), `insert_string(s)`, `delete_forward`,
 `kill_to_end_of_line` (the RETURNED cut string is compared too),
 `forward_word`, `backward_word`, `set mark = point` (mirrors `C-SPC`),
 `find_forward(pat, from)` / `find_backward(pat, from)` (read-only; pattern
-pool = ASCII substrings incl. multi-char and absent patterns).
+pool = ASCII substrings incl. multi-char and absent patterns),
+`snapshot()` (T-9: stores a `(buffer, ref-built)` state pair; the pair
+equality asserts snapshot() fidelity) and `restore(idx)` (restores a
+stored state into BOTH sides; the full-state sweep then pins the
+restore mirror incl. the point/mark clamp and `modified = true`).
 The op list covers EVERY pub API item of buffer.rs (design gate MA-2):
 the model also reads `name` and `filename` (assert == model values after
 `Buffer::new`), so no pub item is dead-code-warned in the per-target
@@ -126,6 +130,16 @@ Ops (each = one dispatch command, byte encodings exact):
 | `M-b`/`M-f` | `1b 62`/`1b 66` | `backward_word()` / `forward_word()` |
 | `M-<`/`M->` | `1b 3c`/`1b 3e` | `beginning_of_buffer()` / `end_of_buffer()` |
 | arrows U/D/R/L | `1b 5b 41..44` | `previous_line`/`next_line`/`forward_char`/`backward_char` |
+| `Undo` (T-9) | `1f` | `undo()` mirror: pop the entry stack (empty: no-op), `restore(st)` |
+
+T-9 undo mirror (main.rs `push_entry`/`undo`): every change op takes a
+pre-snapshot and pushes it ONLY when the text changed (the production
+no-op guards), with group tag 1 = typing run (Char/Enter), 2 = kill run
+(consecutive `C-k`), 0 = ungrouped; the loop-bottom `touched` rule breaks
+the run for every non-pushing op, consecutive same-tag pushes MERGE into
+the run's first pre-state, and the stack is capped at 200. The Sim
+replays this exactly; the final saved-file comparison then verifies
+restore fidelity.
 
 After EVERY op the model replays the loop-top `sync_in` clamp
 (main.rs:120-132): `point = min(point, len)` AND
@@ -172,7 +186,8 @@ Seed text: fixed, contains NO `-` and no `|` (e.g.
 
 Ops: `SplitBelow 18 32`, `SplitRight 18 33`, `OtherWindow 18 6f`,
 `DeleteOtherWindows 18 31`, `Char('a ')` typing (adds 'a'/' ' to the
-shared buffer), `Enter 0d`.
+shared buffer), `Enter 0d`, `Undo 1f` (T-9: pops the stack; structure
+rows are unaffected, liveness/pane-sane must survive).
 
 Checkpoints (settle 0.5 s each, max 3 per case):
 
@@ -193,7 +208,8 @@ Plus P1 invariants 1-4. Config: 16 cases, 1..16 ops.
 
 ## P4 - resize fuzz (tmux)
 
-Ops: printable typing, `C-n/C-p/C-a/C-e`, `C-x 2`, `C-x o`, `C-x 1`;
+Ops: printable typing, `C-n/C-p/C-a/C-e`, `C-/` undo (T-9), `C-x 2`,
+`C-x o`, `C-x 1`;
 resizes `tmux resize-window -x W -y H` with
 `W in {10,20,40,80,120,200}`, `H in {4,10,24,50}`, interleaved
 (burst, resize, burst, resize, ...; settle 0.4 s after each resize).

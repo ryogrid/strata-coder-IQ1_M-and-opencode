@@ -27,6 +27,7 @@ pub enum Cmd {
     BackwardWord, ForwardWord,
     DeleteBackward, DeleteForward, OpenLine, TransposeChars,
     KillLine, Yank,
+    Undo,         // C-/ (arrives as 0x1f = US, the C-_ code; T-9)
     GotoLine,     // C-l (minibuffer line number)
     Isearch,      // C-s: the incremental-search loop (one method)
     FindBackward, // C-r (minibuffer query)
@@ -68,6 +69,7 @@ pub fn plain_key(b: u8) -> Cmd {
         0x0c => Cmd::GotoLine,
         0x11 => Cmd::QuoteInsert,
         0x0a | 0x0d => Cmd::Newline,
+        0x1f => Cmd::Undo, // C-/ (xterm-family: Ctrl-/ sends 0x1f, same as C-_)
         0x20..0x7f => Cmd::SelfInsert,
         _ => Cmd::Noop, // unbound control byte: SILENT (no msg, old chain)
     }
@@ -129,6 +131,7 @@ mod tests {
         assert!(plain_key(0x7f) == Cmd::DeleteBackward); // DEL, NOT insert
         assert!(plain_key(0x0b) == Cmd::KillLine);
         assert!(plain_key(0x0a) == Cmd::Newline && plain_key(0x0d) == Cmd::Newline);
+        assert!(plain_key(0x1f) == Cmd::Undo); // T-9: C-/ (US byte, the C-_ code)
         assert!(plain_key(0x08) == Cmd::Noop); // unbound control: silent
     }
     #[test]

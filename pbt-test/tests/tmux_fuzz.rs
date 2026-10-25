@@ -156,6 +156,7 @@ enum P2Op {
     Mlt,
     Mgt,
     Arr(u8),
+    Undo,
 }
 
 fn send_p2(s: &Session, op: &P2Op) {
@@ -180,6 +181,7 @@ fn send_p2(s: &Session, op: &P2Op) {
         P2Op::Mlt => s.send_hex(&[0x1b, 0x3c]),
         P2Op::Mgt => s.send_hex(&[0x1b, 0x3e]),
         P2Op::Arr(t) => s.send_hex(&[0x1b, 0x5b, *t]),
+        P2Op::Undo => s.send_hex(&[0x1f]),
     }
 }
 
@@ -190,6 +192,17 @@ struct Sim {
     buf: Buffer,
     killed: String,
     prev: u8,
+    // T-9: mirrors Ed's undo stack + run grouping (main.rs). bi is
+    // always 0 here (single buffer), kept for the production shape.
+    undo: Vec<SimEntry>,
+    group_alive: bool,
+    touched: bool,
+}
+
+struct SimEntry {
+    bi: usize,
+    tag: u8,
+    st: buffer::UndoState,
 }
 
 fn lead_byte(c: char) -> u8 {
@@ -202,7 +215,6 @@ fn lead_byte(c: char) -> u8 {
 
 impl Sim {
     fn op(&mut self, op: &P2Op) {
-        self.dispatch(op);
         // The editor runs sync_in() at the top of EVERY loop iteration,
         // clamping the leaf's point AND MARK to the buffer length
         // (main.rs sync_in, writes both ways). After any op that shrinks
@@ -216,38 +228,84 @@ impl Sim {
         if self.buf.mark > l {
             self.buf.mark = l;
         }
+        // loop top (T-9): a command that pushes re-arms the change-run
+        self.touched = false;
+        self.dispatch(op);
+        // loop bottom (T-9): any command that did NOT push breaks the run
+        if !self.touched {
+            self.group_alive = false;
+        }
+    }
+
+    // mirrors Ed::push_entry (grouping: 1 = typing run, 2 = kill run)
+    fn push_entry(&mut self, bi: usize, tag: u8, st: &buffer::UndoState) {
+        let merge = tag != 0
+            && self.group_alive
+            && self.undo.last().is_some_and(|e| e.tag == tag && e.bi == bi);
+        self.touched = true;
+        self.group_alive = true;
+        if merge {
+            return;
+        }
+        self.undo.push(SimEntry { bi, tag, st: st.clone() });
+        if self.undo.len() > 200 {
+            self.undo.remove(0);
+        }
+    }
+
+    // a change op: snapshot, apply, push ONLY when the text changed
+    // (mirrors the production handlers' no-op guards)
+    fn change(&mut self, tag: u8, f: impl FnOnce(&mut Sim) -> bool) {
+        let pre = self.buf.snapshot();
+        let applied = f(self);
+        if applied && self.buf.text() != pre.text {
+            self.push_entry(0, tag, &pre);
+        }
     }
 
     fn dispatch(&mut self, op: &P2Op) {
         match op {
             P2Op::Char(c) => {
-                self.buf.insert_char(*c);
-                self.prev = lead_byte(*c);
+                let c = *c;
+                self.change(1, |sim| {
+                    sim.buf.insert_char(c);
+                    true
+                });
+                self.prev = lead_byte(c);
             }
             P2Op::Enter => {
-                self.buf.insert_char('\n');
+                self.change(1, |sim| {
+                    sim.buf.insert_char('\n');
+                    true // newline always inserts
+                });
                 self.prev = 0x0d;
             }
             P2Op::Bs => {
-                self.buf.delete_backward();
+                self.change(0, |sim| sim.buf.delete_backward());
                 self.prev = 0x7f;
             }
             P2Op::Cd => {
-                self.buf.delete_forward();
+                self.change(0, |sim| sim.buf.delete_forward());
                 self.prev = 0x04;
             }
             P2Op::Ck => {
-                let cut = self.buf.kill_to_end_of_line();
-                if self.prev == 0x0b {
-                    self.killed.push_str(&cut);
-                } else {
-                    self.killed = cut;
-                }
+                self.change(2, |sim| {
+                    let cut = sim.buf.kill_to_end_of_line();
+                    if sim.prev == 0x0b {
+                        sim.killed.push_str(&cut);
+                    } else {
+                        sim.killed = cut;
+                    }
+                    true // the text guard in change() covers the no-op
+                });
                 self.prev = 0x0b;
             }
             P2Op::Cy => {
-                let k = self.killed.clone();
-                self.buf.insert_string(&k);
+                self.change(0, |sim| {
+                    let k = sim.killed.clone();
+                    sim.buf.insert_string(&k);
+                    !k.is_empty() // empty kill-ring: inserts nothing
+                });
                 self.prev = 0x19;
             }
             P2Op::Ca => {
@@ -275,11 +333,17 @@ impl Sim {
                 self.prev = 0x10;
             }
             P2Op::Co => {
-                self.buf.insert_newline_after();
+                self.change(0, |sim| {
+                    sim.buf.insert_newline_after();
+                    true // C-o always inserts
+                });
                 self.prev = 0x0f;
             }
             P2Op::Ct => {
-                self.buf.transpose_chars();
+                self.change(0, |sim| {
+                    sim.buf.transpose_chars();
+                    true
+                });
                 self.prev = 0x14;
             }
             P2Op::Cspc => {
@@ -310,6 +374,14 @@ impl Sim {
                     _ => self.buf.backward_char(),
                 }
                 self.prev = 0x1b;
+            }
+            P2Op::Undo => {
+                // mirrors Ed::undo: pop + restore (no msg in the model)
+                self.group_alive = false;
+                if let Some(e) = self.undo.pop() {
+                    self.buf.restore(&e.st);
+                }
+                self.prev = 0x1f;
             }
         }
     }
@@ -374,6 +446,7 @@ fn p2_ops() -> impl Strategy<Value = Vec<P2Op>> {
         1 => Just(P2Op::Mlt),
         1 => Just(P2Op::Mgt),
         2 => prop::sample::select(vec![0x41u8, 0x42, 0x43, 0x44]).prop_map(P2Op::Arr),
+        3 => Just(P2Op::Undo),
     ];
     prop::collection::vec(one, 1..30usize)
 }
@@ -401,6 +474,9 @@ proptest! {
             buf: Buffer::new(seed_path.clone(), seed.clone()),
             killed: String::new(),
             prev: 0,
+            undo: vec![],
+            group_alive: false,
+            touched: false,
         };
         prop_assert_eq!(&sim.buf.name, &seed_path);
         // Model self-check (gate MA-2 field reachability). NOTE: emur
@@ -470,6 +546,7 @@ enum P3Op {
     DelOther,
     Type(char),
     Enter,
+    Undo,
 }
 
 fn send_p3(s: &Session, op: &P3Op) {
@@ -480,6 +557,7 @@ fn send_p3(s: &Session, op: &P3Op) {
         P3Op::DelOther => s.send_hex(&[0x18, 0x31]),
         P3Op::Type(c) => s.send_text(&c.to_string()),
         P3Op::Enter => s.send_hex(&[0x0d]),
+        P3Op::Undo => s.send_hex(&[0x1f]),
     }
 }
 
@@ -491,6 +569,7 @@ fn p3_ops() -> impl Strategy<Value = Vec<P3Op>> {
         3 => Just(P3Op::DelOther),
         4 => prop::sample::select(vec!['a', ' ']).prop_map(P3Op::Type),
         1 => Just(P3Op::Enter),
+        2 => Just(P3Op::Undo),
     ];
     prop::collection::vec(one, 1..16usize)
 }
@@ -564,6 +643,7 @@ enum P4Op {
     Split3,
     Other,
     DelOther,
+    Undo,
 }
 
 fn send_p4(s: &Session, op: &P4Op) {
@@ -578,6 +658,7 @@ fn send_p4(s: &Session, op: &P4Op) {
         P4Op::Split3 => s.send_hex(&[0x18, 0x33]),
         P4Op::Other => s.send_hex(&[0x18, 0x6f]),
         P4Op::DelOther => s.send_hex(&[0x18, 0x31]),
+        P4Op::Undo => s.send_hex(&[0x1f]),
     }
 }
 
@@ -600,6 +681,7 @@ fn p4_steps() -> impl Strategy<Value = Vec<P4Step>> {
         2 => Just(P4Op::Split3),
         2 => Just(P4Op::Other),
         2 => Just(P4Op::DelOther),
+        2 => Just(P4Op::Undo),
     ];
     let step = (
         prop::collection::vec(op, 1..6usize),

@@ -371,6 +371,44 @@ impl Buffer {
         out.extend(self.chars[self.gap_end..self.chars.len()].iter());
         out.iter().collect::<String>()
     }
+
+    // --- undo support (C-/; Design Doc D row 0x1f) -------------------------
+    // Full-state snapshot for the dispatch loop's undo stack. The stack
+    // lives in Ed (main.rs: grouping is a dispatch-level concern); the
+    // buffer owns the snapshot/restore mechanics so the gap layout is
+    // rebuilt in ONE place.
+    pub fn snapshot(&self) -> UndoState {
+        UndoState {
+            text: self.text(),
+            point: self.point,
+            mark: self.mark,
+        }
+    }
+
+    // Rebuild the whole buffer from a snapshot (same gap-at-end layout as
+    // new()). point/mark clamp into the restored text. The buffer becomes
+    // MODIFIED: an undo is itself a change relative to the on-disk file
+    // (Emacs marks the buffer modified on undo; a save clears it).
+    pub fn restore(&mut self, st: &UndoState) {
+        let mut chars: Vec<char> = st.text.chars().collect();
+        let n = chars.len();
+        chars.resize(n + GAP, '\0');
+        self.chars = chars;
+        self.gap_start = n;
+        self.gap_end = n + GAP;
+        self.point = st.point.min(n);
+        self.mark = st.mark.min(n);
+        self.modified = true;
+    }
+}
+
+// Undo snapshot: full visible state of a buffer (gap internals excluded -
+// restore rebuilds them). Clone/PartialEq for the P0 differential test.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct UndoState {
+    pub text: String,
+    pub point: usize,
+    pub mark: usize,
 }
 
 #[cfg(test)]
@@ -593,5 +631,50 @@ fn empty_buffer_edge_edits() {
     assert!(b.text() == "");
     b.transpose_chars();
     assert!(b.point == 0);
+}
+#[test]
+fn snapshot_restore_roundtrip() {
+    // T-9: undo primitive: full state returns; gap layout survives the
+    // rebuild (edits keep working after a restore)
+    let mut b = Buffer::new("t", "alpha\nbeta");
+    b.point = 4;
+    b.mark = 2;
+    let st = b.snapshot();
+    b.insert_char('X');
+    b.kill_to_end_of_line();
+    b.insert_string("zz");
+    assert!(b.text() != st.text);
+    b.restore(&st);
+    assert!(b.text() == "alpha\nbeta");
+    assert!(b.point == 4);
+    assert!(b.mark == 2);
+    assert!(b.modified); // restore marks: an undo is a change vs the file
+    b.insert_char('Q'); // gap layout rebuilt: editing works after restore
+    assert!(b.text() == "alphQa\nbeta");
+}
+#[test]
+fn restore_clamps_point_mark() {
+    // T-9: defensive clamp in restore. A snapshot CANNOT carry positions
+    // beyond its own text (snapshot() reads live fields; sync_in clamps
+    // them per loop iteration), so the min() is defense-in-depth, not a
+    // reachable path. Hand-built over-length states pin the clamp:
+    let st = UndoState { text: "xy".to_string(), point: 9, mark: 7 };
+    let mut b = Buffer::new("t", "abcdef");
+    b.restore(&st);
+    assert!(b.point == 2);
+    assert!(b.mark == 2);
+    assert!(b.text() == "xy");
+    assert!(b.len() == 2);
+}
+#[test]
+fn restore_empty_marks_modified() {
+    // T-9: restore onto an unmodified buffer flips modified
+    let mut b = Buffer::new("t", "abc");
+    b.modified = false;
+    let st = b.snapshot();
+    b.delete_forward();
+    b.restore(&st);
+    assert!(!b.text().is_empty());
+    assert!(b.modified);
 }
 }

@@ -52,6 +52,7 @@ review 当時の計測で「約 300 行」)は 1 関の平坦な if-else 連鎖�
 | 素 | 0x0c | go-to-line(read_line、M-1/M-10) | msg various |
 | 素 | 0x11 | C-q quote(次 byte を read_char_eof で自挿入) | EOF 時は read_byte=0 → NUL 1 文字挿入後、ループ頭 EOF で終了(Design Doc A の既知 quirk、コメント維持) |
 | 素 | 0x0a/0x0d | 改行挿入 | |
+| 素 | 0x1f | undo(T-9:`C-/`。xterm 系では `C-_` と同 byte) | msg=Undo/No change to undo。グループ化:タイピング連続(自挿入・改行・C-q)=1 グループ、C-k 連続=1 グループ、それ以外のコマンドでグループ切れ。履歴は 200 件上限、C-x k で当該 buffer の entry を破棄 |
 | 素 | 0x20..0x7f, ≥0x80 | 自挿入 | |
 | 素 | その他(printable でない未バインド byte) | **無言 no-op**(現状。0x03 着地もここ) | |
 | C-x | 0x03 | Quit(同上) | 取消時 msg=Cancelled |
@@ -84,7 +85,7 @@ pub enum Cmd {
     NextLine, PreviousLine, BeginningOfBuffer, EndOfBuffer,
     BackwardWord, ForwardWord,
     DeleteBackward, DeleteForward, OpenLine, TransposeChars,
-    KillLine, Yank,                   // 実在の分だけ(KillRegion は未バインド=置かない)
+    KillLine, Yank, Undo,             // T-9: Undo=C-/(0x1f)。実在の分だけ(KillRegion は未バインド=置かない)
     GotoLine, Isearch,                // C-s は専用ループ(1 メソッドに丸ごと)
     FindBackward,
     FindFile, Save, WriteFile, InsertFile, KillBuffer, SwitchBuffer(bool), // 0x02=list形式
