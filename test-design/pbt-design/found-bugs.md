@@ -82,7 +82,7 @@ Observed: `p1_raw_byte_fuzz` panic "tmux new-session failed for
 pbt-968462-0"; leaked sessions `pbt-968783-0/1/2`; P2/P3 "Test failed:
 failed in other process."; "Ran past the end of the replay."
 Expected: in-process cases with full failure messages and Drop cleanup.
-Fix: `timeout = 0` (fork disabled) in `support::cfg`; cases run
+Fix: `timeout = 0` (fork disabled) in `support::cfg` (landed 17e6637); cases run
 in-process under `--test-threads=1`; a hung case is bounded by the CI
 job `timeout-minutes` (05). All four signatures disappeared.
 Notes: recorded as a design deviation in 03 §Config plumbing + 04 §1;
@@ -112,7 +112,7 @@ Analysis: tmux builds the server command line from client argv with
 shell-style quoting; a lone `;` argument is not quoted for the SERVER
 parser, so the command splits and `-l --` receives zero keys.
 Fix: `Session::send_text` now encodes UTF-8 to hex bytes and uses
-`send-keys -H` (hex tokens carry no command syntax); P1-P4 all send
+`send-keys -H` (hex tokens carry no command syntax; landed 17e6637); P1-P4 all send
 every byte through `-H`.
 Notes: this is the flagship PBT find - model-equivalence fuzz minimized
 to a 7-op reproducer of a tmux-harness quoting trap.
@@ -135,7 +135,8 @@ on the same line: `----------...----|@` (all-dashes test fails);
 (c) with the ACTIVE window in the right column (`C-x o` then `C-x 2`)
 the dashes sit AFTER the `|` (`@...|----...`).
 Fix: detect any run of 8 consecutive '-' inside any pane line (seed
-text and P3 typed chars contain no '-', so the run is unambiguous).
+text and P3 typed chars contain no '-', so the run is unambiguous;
+landed 17e6637).
 Collapse check (`C-x 1` -> no dash run, no '|') unchanged.
 Notes: emur's rendering was correct in all three captures.
 
@@ -156,7 +157,8 @@ unexpectedly.` (tmux then auto-restarted, leaving shrink-created
 sessions behind).
 
 Fix: `sweep_leftovers` settles 600 ms after killing sessions, and
-`Session::start` retries `new-session` once after a settle on failure.
+`Session::start` retries `new-session` once after a settle on failure
+(landed 17e6637).
 Notes: harness-level; hits only the FIRST session of a test-binary run.
 
 ---
@@ -201,7 +203,7 @@ interaction between insert-mark, shrink, clamp, and the mark-ahead
 C-f rule.
 Fix: model mirrors sync_in: after every P2 op,
 `point = min(point, len); mark = min(mark, len)` in `Sim::op`
-(this commit). P2 re-run 3x24 cases green.
+(landed 17e6637). P2 re-run 3x24 cases green.
 Notes: emur unit tests cover sync_in's POINT clamp; the MARK clamp
 interaction with forward_char's region rule has no direct unit test -
 candidate follow-up if emur ever exposes mark in a unit-testable loop.
@@ -232,8 +234,8 @@ continuation bytes the lead promises - the same contract P0 pins). The
 harness suffix must survive the worst-case consumption: a lead byte
 0xF0..0xF7 eats up to 3 bytes.
 Fix: P1 suffix is now FOUR `07` bytes (3 consumed + 1 that the open
-prompt sees; the extra also covers a pending C-x prefix). Landed in
-this commit with 03 §P1 + 04 §3 doc fold-in.
+prompt sees; the extra also covers a pending C-x prefix). Landed
+17e6637 with 03 §P1 + 04 §3 doc fold-in.
 Notes: found by the full-case suite, not by smoke - the class of bug
 only deep runs hit.
 

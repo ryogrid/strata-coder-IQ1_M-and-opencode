@@ -51,7 +51,8 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 - [x] C1 naive モデル実装(op 全メソッド+point/mark+modified+kill 返り値
       +find 返り値+gap 窓の健全性+len 同一性+char_at/to_index/line_* 全走査)
 - [x] C2 P0 実装+512 ケース通過(include された buffer 単体 14 件も同時実行)
-- [ ] C3 プリコミット・ゲート → コミット/ push(D とcombined で実施)
+- [x] C3 プリコミット・ゲート → コミット/ push(D5 と combined で実施済み
+      → コミット 17e6637)
 
 ## Phase D: P1-P4(tmux 統合ファジング)
 
@@ -62,7 +63,8 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
       「行中に 8 連の '-'」判定。ダッシュ行は全行 '-' でない=PBTF-004)
 - [x] D4 P4 resize ファジング(狭幅でステータ行が折り返すため
       pane_sane_lax=ステータ検査無し。03 §P4 の設計逸脱として明記)
-- [ ] D5 プリコミット・ゲート → コミット/ push
+- [x] D5 プリコミット・ゲート(コードゲート APPROVE-WITH-CHANGES:Blocker 1=
+      CI EMUR_BIN/Minor 3。全件織り込み+実測確認)→ コミット/ push 17e6637
 - [x] D6 `test-design/pbt-run.sh` 実装(直列実行の単一分入口)
 
 ## Phase E: 本走・トリアージ・不具合対応
@@ -82,7 +84,8 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 - [x] F1 `ci.yml` に PBT ステップ追加(05 の並び)+ ジョブ
       `timeout-minutes: 20`(timeout=0 逸脱の外側安全網)。CI 緑確認は push 後
 - [x] F2 学習記録の追記(台帳末尾)
-- [ ] F3 変更履歴の最終化(コミットハッシュ・バックフィル)
+- [x] F3 変更履歴の最終化(コミットハッシュ・バックフィル済み。
+      found-bugs PBTF-002〜007 の Fix 欄に 17e6637 を明記)
 
 ## 学習記録
 
@@ -173,8 +176,9 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
   `../target/debug/emur` に修正+実測確認(02/05 反映)。Minor=tmux_fuzz
   ヘッダの fork モード記述を timeout=0 実情に更新。本走 2 周目の P1 失敗は
   isearch 中の 3-byte lead が C-g サフィックス 2 枚を消費(PBTF-007)→
-  サフィックス 4 枚化(03 §P1/04 §3 反映)。フル 3 連続走はゲート後実施。
-- 2026-10-25: PBT 実装一式(pbt-test スキャフォールド+support harness+
+  サフィックス 4 枚化(03 §P1/04 §3 反映)。フル 3 連続走=3 周とも rc=0。
+  このゲート織り込み分=コミット 17e6637(implementation と同コミット)。
+- 2026-10-25: PBT 実装一式(コミット 17e6637:pbt-test スキャフォールド+support harness+
   P0 差分テスト+P1-P4 tmux ファジング+pbt-run.sh+ルート workspace 化+
   Cargo.lock+ci.yml PBT ステップ/timeout-minutes)。設計からの逸脱は
   found-bugs PBTF-002(timeout=0)/003(send_text=-H hex)/004(ダッシュ行
