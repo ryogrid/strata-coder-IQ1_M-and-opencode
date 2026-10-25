@@ -87,7 +87,18 @@
     alias しても point は leaf ごとに独立。C-x k は全 alias leaf を 0 化(M-15)、
     再表示時 show_buffer/C-x b は 0 リセットなので stale キャッシュは可視化されない
 - [x] **M-15**: alias キル後の stale leaf-point で panic(fix #7 ゲート発見・既存バグ)。`C-x 2`→`C-e`→`C-x o`→`C-x k`→`C-x o`→`x` で buffer.rs move_gap 添字外(pure legacy キーで再現、M-6 以前から存在)。`C-x k`時に buffer を指す全 leaf の point/mark/scroll を 0 化、かつ/または main ループ先頭 sync で `point.min(buf.len())` クランプ。M-13 と併せて対応可 → 両方実施(C-x k=全 alias leaf を 0 化/ループ先頭=point・mark を len にクランプ)。e2e s153(旧 worktree で panic 確認・新 PASS、fix #9)
-- [ ] **M-14**: .to_string()/clone 乱用を API 変更で削減。02 §M-14
+- [x] **M-14**: .to_string()/clone 乱用を API 変更で削減。02 §M-14
+  → 所有済み String の複製を borrow API へ:main.rs=`read_file(&str)`/
+  `write_file(&str,&str)`/`find_buffer(&str)`(呼び出しは `&path`/`&sel`)、
+  `filename.clone().map(to_string)` 削除(`unwrap_or_default`)、`killed +=`
+  (push_str)。terminal.rs=`chars_of(&str)`/`str_of(&[char])`/`has_prefix(&str,&str)`/
+  `completions(&str,&[String])`/`common_prefix(&[String])`/`list_width(&[String])`/
+  `cand_at(&[String])`/`file_candidates(&str)`(入力 `~` 書換えは `&str` のまま)。
+  `read_line_c` の pool は file/buffer 両系統で `completions(&inp, &pool)` に集約。
+  screen.rs=`draw_cell(&str,&[Style])`(`view.lines[li]` の clone と per-frame の
+  styles Vec 複製が消えた)/`style_esc -> &'static str`(String 確保が per-cell から消去)。
+  残 clone は所有意味(累積 list/fps OsStr/emit(String) 契約/test)。
+  呼び出し件数:main 54→44、terminal 59→27、screen 14→3、buffer 2(fix #26)
 - [x] **S-5**: Frame.kind を enum 化(境界 Frame の leaf ダミー除去)。03 §S-5
   → `Frame` を enum 化(Window{leaf,top,height,col,width} / BoundaryRow{top,col,width} /
   BoundaryCol{top,height,col})。境界の dummy `leaf: 0` と magic `kind: 0/1/2` を消去、
@@ -667,4 +678,27 @@
   証拠=unit 38/38・build/clippy `--all-targets` 0・`RUSTFLAGS=-D warnings
   --locked --all-targets` rc0・フル e2e 89/89(run32、s133 の 451KB 巨大 buffer
   描画 performance 含む)+release smoke 6/6(rs20)。
-  (fix #25 のコミットハッシュは次エントリに記載)
+  (fix #25 のコミットハッシュは次エントリに記載=654724e)
+- 2026-10-25: **fix #26(このコミット)**: M-14(所有 String の複製を borrow API へ)。
+  main.rs=`read_file(&str)`/`write_file(&str,&str)`/`find_buffer(&str)`+呼び出し側
+  `&path`/`&sel`(2 箇所ある write_file のうち 1 箇所だけ置換された初回は
+  ビルドエラーで検出)、`filename.clone().map(to_string)`→`unwrap_or_default`、
+  `killed.to_string()+&cut`→`push_str`。terminal.rs=`chars_of(&str)`/`str_of(&[char])`/
+  `has_prefix(&str,&str)`/`completions(&str,&[String])`/`common_prefix(&[String])`/
+  `list_width(&[String])`/`cand_at(&[String])`/`file_candidates(&str)`(`~` 書換えは
+  `&str` のまま litera で成立)。read_line_c の pool は file/buffer を
+  `completions(&inp, &pool)` の 1 形に集約(clones 3 消滅)。screen.rs=
+  `draw_cell(&str,&[Style])`(`view.lines[li].clone()` と per-frame styles 複製消去)、
+  `style_esc -> &'static str`(per-cell String 確保消去)。test の `&vec![]` は
+  clippy `useless_vec` 5 件→`&[]` で駆逐(`#[allow]` 不使用)。
+  残 clone は所有意味(累積 list/hits push、OsStr→fps、emit(String) 契約、
+  label msg.clone、test データ)。件数 main 54→44・terminal 59→27・screen 14→3。
+  出力/挙動同一(借用化のみ)。probe25(PASS)+フル e2e 89/89(run33)+
+  release smoke 6/6(rs21)。unit 38/38・build/clippy `--all-targets` 0・
+  `RUSTFLAGS=-D warnings --locked --all-targets` rc0。
+  (fix #26 のコミットハッシュは次エントリに記載)
+  ゲート APPROVE(全箇所の意味同一表・clone/token 追加なし=61 除去 vs 8 追加は
+  同一箇所の 1:1 書換え)。ゲート Minor 織り込み=draw_all label の `msg.clone()`
+  を所有権移動へ(パラメータ msg は label 以降 dead)。ゲート記載の pre-existing
+  指摘(main.rs 209 `Some(path.clone())`=path は最終使用、移動可)は M-14 の
+  追及外として TODO に記録(次回の掃除候補)。

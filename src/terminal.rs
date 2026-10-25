@@ -161,7 +161,7 @@ pub fn read_char_eof(first: u8) -> Option<char> {
 
 // --- minibuffer completion helpers ------------------------------------------
 
-pub fn chars_of(s: String) -> Vec<char> {
+pub fn chars_of(s: &str) -> Vec<char> {
     let mut out: Vec<char> = vec![];
     for c in s.chars() {
         out.push(c);
@@ -169,12 +169,12 @@ pub fn chars_of(s: String) -> Vec<char> {
     out
 }
 
-pub fn str_of(cs: Vec<char>) -> String {
+pub fn str_of(cs: &[char]) -> String {
     cs.iter().collect::<String>()
 }
 
 // True when name starts with the input characters.
-pub fn has_prefix(name: String, input: String) -> bool {
+pub fn has_prefix(name: &str, input: &str) -> bool {
     let n = chars_of(name);
     let t = chars_of(input);
     if t.len() > n.len() {
@@ -191,11 +191,11 @@ pub fn has_prefix(name: String, input: String) -> bool {
 }
 
 // Candidates matching the typed input (all candidates when input is empty).
-pub fn completions(input: String, cands: Vec<String>) -> Vec<String> {
+pub fn completions(input: &str, cands: &[String]) -> Vec<String> {
     let mut hits: Vec<String> = vec![];
     let mut j = 0;
     while j < cands.len() {
-        if has_prefix(cands[j].clone(), input.clone()) {
+        if has_prefix(&cands[j], input) {
             hits.push(cands[j].clone());
         }
         j += 1;
@@ -204,11 +204,11 @@ pub fn completions(input: String, cands: Vec<String>) -> Vec<String> {
 }
 
 // Longest common prefix of all candidates.
-pub fn common_prefix(list: Vec<String>) -> String {
+pub fn common_prefix(list: &[String]) -> String {
     if list.is_empty() {
         return "".to_string();
     }
-    let first = chars_of(list[0].clone());
+    let first = chars_of(&list[0]);
     let mut out: Vec<char> = vec![];
     let mut i = 0;
     while i < first.len() {
@@ -216,7 +216,7 @@ pub fn common_prefix(list: Vec<String>) -> String {
         let mut j = 1;
         let mut all = true;
         while j < list.len() {
-            let cs = chars_of(list[j].clone());
+            let cs = chars_of(&list[j]);
             if i >= cs.len() || cs[i] != c {
                 all = false;
                 break;
@@ -230,7 +230,7 @@ pub fn common_prefix(list: Vec<String>) -> String {
         }
         i += 1;
     }
-    str_of(out)
+    str_of(&out)
 }
 
 // Path candidates from the filesystem: completes the tail after the last '/'
@@ -258,10 +258,10 @@ pub fn expand_tilde(s: String) -> String {
     s
 }
 
-pub fn file_candidates(input: String) -> Vec<String> {
+pub fn file_candidates(input: &str) -> Vec<String> {
     // T-8: "~" alone means the home dir: treat it as "~/" so the listing
     // (fs side) works and candidates echo as "~/name".
-    let input = if input == "~" { "~/".to_string() } else { input };
+    let input: &str = if input == "~" { "~/" } else { input };
     let cs = chars_of(input);
     let mut slash = 0;
     let mut i = 0;
@@ -290,7 +290,7 @@ pub fn file_candidates(input: String) -> Vec<String> {
             hd.push(head[k]);
             k += 1;
         }
-        dir = str_of(hd);
+        dir = str_of(&hd);
         // T-8 (gate Minor-1 from fix #22): input "/..." gives the empty
         // head-trim; read_dir("") always fails -> map to the root.
         if dir.is_empty() {
@@ -300,14 +300,14 @@ pub fn file_candidates(input: String) -> Vec<String> {
     // T-8: the fs side expands ~; head_s (echo/candidate prefix) keeps
     // the typed text so candidates match the input prefix.
     let fs_dir = expand_tilde(dir);
-    let tail_s = str_of(tail);
-    let head_s = str_of(head);
+    let tail_s = str_of(&tail);
+    let head_s = str_of(&head);
     let mut cands: Vec<String> = vec![];
     if let Ok(rd) = std::fs::read_dir(fs_dir) {
         for e in rd.flatten() {
             if let Some(fp) = e.path().to_str() {
                 let fps = fp.to_string();
-                let pcs = chars_of(fps);
+                let pcs = chars_of(&fps);
                 let mut last = 0;
                 let mut k = 0;
                 while k < pcs.len() {
@@ -326,12 +326,12 @@ pub fn file_candidates(input: String) -> Vec<String> {
                 // lands the user right where the next Tab continues.
                 let isdir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
                 let suffix = if isdir { "/" } else { "" };
-                let nms = str_of(nm);
+                let nms = str_of(&nm);
 
                 // the prefix filter tests the BARE NAME against the tail
                 // (head-agnostic; completions() re-checks the full string
                 // against the full input, and the two agree)
-                if has_prefix(nms.clone(), tail_s.clone()) {
+                if has_prefix(&nms, &tail_s) {
                     cands.push(format!("{}{}{}", head_s, nms, suffix));
                 }
             }
@@ -346,13 +346,13 @@ pub fn file_candidates(input: String) -> Vec<String> {
 // Echo width of a candidate list: the two separator spaces plus every
 // candidate followed by one space (the format echoed by Tab), in DISPLAY
 // CELLS (Design Doc C / T-7: fullwidth chars occupy 2 terminal columns).
-pub fn list_width(list: Vec<String>) -> usize {
+pub fn list_width(list: &[String]) -> usize {
     let mut w = 0;
     if !list.is_empty() {
         w = 2;
         let mut j = 0;
         while j < list.len() {
-            w += cells_of(&chars_of(list[j].clone())) + 1;
+            w += cells_of(&chars_of(&list[j])) + 1;
             j += 1;
         }
     }
@@ -377,11 +377,11 @@ pub fn cells_of(s: &[char]) -> usize {
 // the caret right before a candidate's first char and right after its last
 // char both count as on it; the separator spaces between candidates are
 // not on any candidate. "" when on none.
-pub fn cand_at(list: Vec<String>, inp: usize, cur: usize) -> String {
+pub fn cand_at(list: &[String], inp: usize, cur: usize) -> String {
     let mut s = inp + 2;
     let mut j = 0;
     while j < list.len() {
-        let l = cells_of(&chars_of(list[j].clone()));
+        let l = cells_of(&chars_of(&list[j]));
         if cur >= s && cur <= s + l {
             return list[j].clone();
         }
@@ -449,22 +449,22 @@ fn caret_col(plen_c: usize, out: &[char], cur: usize) -> usize {
 pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Option<String> {
     let sz = crate::screen::term_size();
     let row: usize = if sz.rows > 0 { sz.rows as usize } else { 24 };
-    let plen_c = cells_of(&chars_of(prompt.clone())); // prompt width in CELLS
+    let plen_c = cells_of(&chars_of(&prompt)); // prompt width in CELLS
     emit(format!("\x1b[{};1H\x1b[2K{}", row, prompt));
     let mut out: Vec<char> = vec![];    // the typed input
     let mut list: Vec<String> = vec![]; // candidates echoed after the input
     let mut cur: usize = 0;             // caret coord, dual-unit (see caret_col)
     loop {
-        let tl = out.len() + list_width(list.clone()); // echoed width
+        let tl = out.len() + list_width(&list); // echoed width
         let rb = read_byte_eof();
         if rb[1] == 1 {
             return None; // EOF: cancel this prompt
         }
         let b = rb[0];
         if b == 0x0D || b == 0x0A { // Enter: the candidate under the cursor wins
-            let mut ret = str_of(out.clone());
+            let mut ret = str_of(&out);
             if !list.is_empty() {
-                let sel = cand_at(list.clone(), cells_of(&out), caret_col(0, &out, cur));
+                let sel = cand_at(&list, cells_of(&out), caret_col(0, &out, cur));
                 if !sel.is_empty() {
                     ret = sel;
                 }
@@ -479,9 +479,12 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
             return Some("".to_string());
         }
         if b == 0x09 { // Tab: minibuffer completion
-            let inp = str_of(out.clone());
-            let pool = if file_comp { file_candidates(inp.clone()) } else { cands.clone() };
-            let hits = completions(inp.clone(), pool);
+            let inp = str_of(&out);
+            let hits = if file_comp {
+                completions(&inp, &file_candidates(&inp))
+            } else {
+                completions(&inp, &cands)
+            };
             if hits.is_empty() {
                 // T-6: no completion matches -> emacs rings the bell
                 // (the old branch fell through SILENTLY: no echo, no
@@ -500,8 +503,8 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                     list = vec![];
                     echo += &format!("\x1b[{};{}H\x1b[K", row, caret_col(plen_c, &out, cur) + 1);
                 }
-                let full = chars_of(hits[0].clone());
-                let mut k = chars_of(inp.clone()).len();
+                let full = chars_of(&hits[0]);
+                let mut k = chars_of(&inp).len();
                 while k < full.len() {
                     out.push(full[k]);
                     echo.push(full[k]);
@@ -515,9 +518,9 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                 if !list.is_empty() { // relisting: erase the old list echo
                     echo += &format!("\x1b[{};{}H\x1b[K", row, caret_col(plen_c, &out, cur) + 1);
                 }
-                let cp = common_prefix(hits.clone());
-                let cpc = chars_of(cp);
-                let mut k = chars_of(inp.clone()).len();
+                let cp = common_prefix(&hits);
+                let cpc = chars_of(&cp);
+                let mut k = chars_of(&inp).len();
                 while k < cpc.len() {
                     out.push(cpc[k]);
                     echo.push(cpc[k]);
@@ -530,7 +533,7 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
                     m += 1;
                 }
                 list = hits.clone();
-                cur = out.len() + list_width(list.clone());
+                cur = out.len() + list_width(&list);
                 emit(echo);
             }
             continue;
@@ -637,24 +640,24 @@ mod tests {
 use super::*;
 #[test]
 fn echo_list_width() {
-    assert!(list_width(vec![]) == 0);
+    assert!(list_width(&[]) == 0);
     // "  aa ab": 2 separators + "aa " + "ab "
-    assert!(list_width(vec!["aa".to_string(), "ab".to_string()]) == 8);
-    assert!(list_width(vec!["*demo*".to_string()]) == 9);
+    assert!(list_width(&["aa".to_string(), "ab".to_string()]) == 8);
+    assert!(list_width(&["*demo*".to_string()]) == 9);
 }
 #[test]
 fn candidate_under_cursor() {
     // echo: [aa ab], input "a" at 0, list starts at 1+2=3: aa spans 3..5, ab 6..8
     let l = vec!["aa".to_string(), "ab".to_string()];
-    assert!(cand_at(l.clone(), 1, 3) == "aa"); // caret before "aa"
-    assert!(cand_at(l.clone(), 1, 4) == "aa"); // caret inside "aa"
-    assert!(cand_at(l.clone(), 1, 5) == "aa"); // caret after "aa"
-    assert!(cand_at(l.clone(), 1, 6) == "ab"); // caret before "ab"
-    assert!(cand_at(l.clone(), 1, 8) == "ab"); // caret after "ab"
-    assert!(cand_at(l.clone(), 1, 1).is_empty()); // caret in the input
-    assert!(cand_at(l.clone(), 1, 2).is_empty()); // caret in the separator gap
-    assert!(cand_at(l.clone(), 1, 9).is_empty()); // caret past the trailing space
-    assert!(cand_at(vec![], 0, 0).is_empty());
+    assert!(cand_at(&l, 1, 3) == "aa"); // caret before "aa"
+    assert!(cand_at(&l, 1, 4) == "aa"); // caret inside "aa"
+    assert!(cand_at(&l, 1, 5) == "aa"); // caret after "aa"
+    assert!(cand_at(&l, 1, 6) == "ab"); // caret before "ab"
+    assert!(cand_at(&l, 1, 8) == "ab"); // caret after "ab"
+    assert!(cand_at(&l, 1, 1).is_empty()); // caret in the input
+    assert!(cand_at(&l, 1, 2).is_empty()); // caret in the separator gap
+    assert!(cand_at(&l, 1, 9).is_empty()); // caret past the trailing space
+    assert!(cand_at(&[], 0, 0).is_empty());
 }
 #[test]
 fn cells_of_cjk() {
@@ -666,8 +669,8 @@ fn cells_of_cjk() {
 }
 #[test]
 fn list_width_cjk() {
-    assert!(list_width(vec!["あい".to_string()]) == 7); // 2 sep + 4 cells + 1
-    assert!(list_width(vec!["aa".to_string(), "ab".to_string()]) == 8); // ASCII unchanged
+    assert!(list_width(&["あい".to_string()]) == 7); // 2 sep + 4 cells + 1
+    assert!(list_width(&["aa".to_string(), "ab".to_string()]) == 8); // ASCII unchanged
 }
 #[test]
 fn cand_at_cjk_cells() {
@@ -675,10 +678,10 @@ fn cand_at_cjk_cells() {
     // fullwidth candidate (cell 12) hits while the char-based span (end 11)
     // would miss it.
     let l = vec!["あa.txt".to_string(), "あi.txt".to_string()]; // 7 cells each
-    assert!(cand_at(l.clone(), 3, 5) == "あa.txt"); // caret at cand1 start
-    assert!(cand_at(l.clone(), 3, 12) == "あa.txt"); // cand1 cell-end (chars: miss)
-    assert!(cand_at(l.clone(), 3, 13) == "あi.txt"); // cand2 start
-    assert!(cand_at(l.clone(), 3, 4).is_empty()); // separator gap
+    assert!(cand_at(&l, 3, 5) == "あa.txt"); // caret at cand1 start
+    assert!(cand_at(&l, 3, 12) == "あa.txt"); // cand1 cell-end (chars: miss)
+    assert!(cand_at(&l, 3, 13) == "あi.txt"); // cand2 start
+    assert!(cand_at(&l, 3, 4).is_empty()); // separator gap
 }
 #[test]
 fn caret_col_units() {
@@ -705,20 +708,20 @@ fn file_candidates_sorted_dirs_slashed_root_lists() {
     std::fs::write(format!("{}/b.txt", d), "b\n").unwrap();
     std::fs::write(format!("{}/a.txt", d), "a\n").unwrap();
     std::fs::create_dir(format!("{}/sub-z", d)).unwrap();
-    let c = file_candidates(format!("{}/", d));
+    let c = file_candidates(&format!("{}/", d));
     assert!(c == vec![
         format!("{}/a.txt", d),
         format!("{}/b.txt", d),
         format!("{}/sub-z/", d),
     ]);
     // prefix filter keeps the tail match, dirs included
-    let c2 = file_candidates(format!("{}/sub", d));
+    let c2 = file_candidates(&format!("{}/sub", d));
     assert!(c2 == vec![format!("{}/sub-z/", d)]);
     // root: the old head-trim produced read_dir("") -> EMPTY pool; now
     // the root lists and directories carry their slash. /usr is a REAL
     // dir on every Linux (merged-usr distros ship /bin as a symlink,
     // DirEntry::file_type does NOT follow: /bin lists WITHOUT a slash)
-    let r = file_candidates("/".to_string());
+    let r = file_candidates("/");
     assert!(r.iter().any(|x| x == "/usr/"));
     let _ = std::fs::remove_dir_all(d);
 }

@@ -6,18 +6,18 @@ mod highlight;
 
 // Returns the file contents, or Err(reason) when the file cannot be read
 // (M-9: callers must report this - loading silently as empty lost errors).
-fn read_file(path: String) -> Result<String, String> {
+fn read_file(path: &str) -> Result<String, String> {
     match std::fs::read_to_string(path) {
         Ok(s) => Ok(s),
         Err(e) => Err(format!("{}", e)),
     }
 }
 
-fn write_file(path: String, text: String) -> bool {
+fn write_file(path: &str, text: &str) -> bool {
     std::fs::write(path, text.as_bytes()).is_ok()
 }
 
-fn find_buffer(bufs: &[buffer::Buffer], name: String) -> Vec<usize> {
+fn find_buffer(bufs: &[buffer::Buffer], name: &str) -> Vec<usize> {
     let mut j = 0;
     while j < bufs.len() {
         if bufs[j].name == name {
@@ -95,8 +95,8 @@ fn main() {
     let mut msg = "".to_string();
     let mut bufs = vec![buffer::Buffer::new("*demo*", "This is the first line\nof the demo buffer.\n")];
     if args.len() > 1 {
-        let path = args[1].to_string();
-        match read_file(path.to_string()) {
+        let path = args[1].clone();
+        match read_file(&path) {
             Ok(text) => {
                 bufs[0] = buffer::Buffer::new(path.clone(), text);
                 bufs[0].filename = Some(path);
@@ -187,7 +187,7 @@ fn main() {
                     // the same basis as find_buffer/C-x b); a C-x C-w-bound
                     // buffer keeps its own name and is not matched. No disk
                     // re-read: buffer edits and the modified flag survive.
-                    let existing = find_buffer(&bufs, path.clone());
+                    let existing = find_buffer(&bufs, &path);
                     if let Some(&nb) = existing.first() {
                         if tree.leaves[active].buffer == nb {
                             msg = "".to_string(); // already showing it: no-op
@@ -197,7 +197,7 @@ fn main() {
                             msg = "".to_string();
                         }
                     } else {
-                        match read_file(path.to_string()) {
+                        match read_file(&path) {
                             Err(e) => {
                                 // M-9: an unreadable file does NOT become an empty
                                 // loaded buffer; report it, keep the current window.
@@ -216,9 +216,9 @@ fn main() {
                     }
                 }
             } else if n == 0x13 { // Ctrl-x Ctrl-s: save
-                let path = bufs[bi].filename.clone().map(|p| p.to_string()).unwrap_or("".to_string());
+                let path = bufs[bi].filename.clone().unwrap_or_default();
                 if !path.is_empty() {
-                    if write_file(path.to_string(), bufs[bi].text()) {
+                    if write_file(&path, &bufs[bi].text()) {
                         bufs[bi].modified = false;
                         msg = format!("Wrote {}", path);
                     } else {
@@ -233,7 +233,7 @@ fn main() {
                 if !path.is_empty() {
                     // M-8: the filename binds ONLY on success; a failed
                     // write leaves save-target (and C-x C-s) untouched.
-                    if write_file(path.to_string(), bufs[bi].text()) {
+                    if write_file(&path, &bufs[bi].text()) {
                         bufs[bi].filename = Some(path.clone());
                         bufs[bi].modified = false;
                         msg = format!("Wrote {}", path);
@@ -245,7 +245,7 @@ fn main() {
                 let path = terminal::read_line_files("Insert file: ");
                 let path = terminal::expand_tilde(path); // T-8
                 if !path.is_empty() {
-                    match read_file(path.to_string()) {
+                    match read_file(&path) {
                         Ok(text) => {
                             bufs[bi].insert_string(&text);
                             msg = format!("Inserted file {}", path);
@@ -301,7 +301,7 @@ fn main() {
                 let sel = terminal::read_line_buffers(prompt, bnames);
                 let mut ti = 999999;
                 if !sel.is_empty() {
-                    let hit = find_buffer(&bufs, sel.to_string());
+                    let hit = find_buffer(&bufs, &sel);
                     if !hit.is_empty() { ti = hit[0]; }
                 } else if n == 0x02 { // Ctrl-x Ctrl-b + Enter: cycle to the next buffer
                     let nxt = if bi + 1 < bufs.len() { bi + 1 } else { 0 };
@@ -367,7 +367,7 @@ fn main() {
                 if c2 == 0x7f { // backspace: drop the last query char
                     if !qs.is_empty() { qs.pop(); }
                     if !qs.is_empty() {
-                        let q2 = terminal::str_of(qs.clone());
+                        let q2 = terminal::str_of(&qs);
                         let hit = bufs[bi].find_forward(&q2, 0);
                         if let Some(end) = hit {
                             bufs[bi].point = end;
@@ -391,7 +391,7 @@ fn main() {
                     attempt.push(cc);
                     echo_ch = cc.to_string();
                 }
-                let q2 = terminal::str_of(attempt.clone());
+                let q2 = terminal::str_of(&attempt);
                 let hit = bufs[bi]
                     .find_forward(&q2, from)
                     .or_else(|| bufs[bi].find_forward(&q2, 0)); // wrap once
@@ -400,7 +400,7 @@ fn main() {
                     bufs[bi].point = end;
                     last = end - qs.len();
                     if c2 != 0x13 {
-                        terminal::emit(echo_ch.to_string()); // echo the query char
+                        terminal::emit(echo_ch.clone()); // echo the query char
                     }
                     // (C-s repeats print nothing: the old trailing flush
                     // was an empty-buffer no-op)
@@ -475,7 +475,7 @@ fn main() {
         } else if b == 0x0b { // Ctrl-k: kill to end of line, feeds Ctrl-y
             let cut = bufs[bi].kill_to_end_of_line();
             if prev_cmd == 0x0b {
-                killed = killed.to_string() + &cut; // consecutive kills accumulate
+                killed.push_str(&cut); // consecutive kills accumulate
             } else {
                 killed = cut;
             }

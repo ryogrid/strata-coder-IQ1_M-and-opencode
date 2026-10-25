@@ -211,13 +211,13 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
                     dash += "-";
                     q += 1;
                 }
-                draw_cell(top, col, dash, width, vec![]);
+                draw_cell(top, col, &dash, width, &[]);
             }
             Frame::BoundaryCol { top, col, height } => {
                 // Vertical window boundary: a column of bars.
                 let mut rr = 0;
                 while rr < height {
-                    draw_cell(top + rr, col, "|".to_string(), 1, vec![]);
+                    draw_cell(top + rr, col, "|", 1, &[]);
                     rr += 1;
                 }
             }
@@ -241,9 +241,9 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
                             }
                             k += 1;
                         }
-                        draw_cell(top + r, col, view.lines[li].clone(), width, line_styles);
+                        draw_cell(top + r, col, &view.lines[li], width, &line_styles);
                     } else {
-                        draw_cell(top + r, col, "@".to_string(), width, vec![]);
+                        draw_cell(top + r, col, "@", width, &[]);
                     }
                     r += 1;
                 }
@@ -268,14 +268,14 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     }
 
     let label = if !msg.is_empty() {
-        msg.to_string()
+        msg // M-14: msg is dead after label; move it (no heap copy)
     } else if abuf.modified {
-        format!("Buf {} *", abuf.name).to_string()
+        format!("Buf {} *", abuf.name)
     } else {
-        format!("Buf {}", abuf.name).to_string()
+        format!("Buf {}", abuf.name)
     };
     let status = format!("{} {}/{} ({}%)", label, st_line, st_total, st_pct);
-    draw_cell(rows - 1, 0, status, cols, vec![]);
+    draw_cell(rows - 1, 0, &status, cols, &[]);
 
     if have_cursor {
         if rows > 1 && crow > rows - 2 {
@@ -294,21 +294,21 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
     tree
 }
 
-pub fn style_esc(s: Style) -> String {
+pub fn style_esc(s: Style) -> &'static str {
     // H-7: exhaustive match - adding a Style variant is a COMPILE error
     // here until the SGR string is defined (the old usize chain silently
     // fell through to reset for unknown codes).
     match s {
-        Style::Keyword => "\x1b[36m".to_string(),
-        Style::Str => "\x1b[35m".to_string(),
-        Style::Comment => "\x1b[32m".to_string(),
-        Style::Number => "\x1b[34m".to_string(),
-        Style::Marker => "\x1b[1;36m".to_string(),
-        Style::Plain => "\x1b[0m".to_string(),
+        Style::Keyword => "\x1b[36m",
+        Style::Str => "\x1b[35m",
+        Style::Comment => "\x1b[32m",
+        Style::Number => "\x1b[34m",
+        Style::Marker => "\x1b[1;36m",
+        Style::Plain => "\x1b[0m",
     }
 }
 
-fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<Style>) {
+fn draw_cell(row: usize, col: usize, line: &str, width: usize, styles: &[Style]) {
     let mut chars: Vec<char> = vec![];
     let mut stys: Vec<Style> = vec![];
     let src: Vec<char> = line.chars().collect();
@@ -343,7 +343,7 @@ fn draw_cell(row: usize, col: usize, line: String, width: usize, styles: Vec<Sty
     while j < chars.len() {
         let s = stys[j];
         if s != cur {
-            for cc in hchars_of(&style_esc(s)) {
+            for cc in hchars_of(style_esc(s)) {
                 out.push(cc);
             }
             cur = s;
