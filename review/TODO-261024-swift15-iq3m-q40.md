@@ -101,10 +101,13 @@
   → 幅<2 の非分割(両子同一ジオメトリ)に注記。ゲート訂正:80 列でも C-x 3 を約 7 回(左 leaf 追従で 80→40→…→1)で到達しうる。クリップ機構は意図的に持たない設計と明記(fix #20)
 - [x] **T-5**: fd0 固定の設計注記(stdin 非 tty で raw mode なし)。04 §T-5
   → save_raw_mode の doc に fd0 固定・非 tty では tcgetattr 失敗=saved None で復元なし(pty 前提の設計、graceful 放弃)を明記(fix #20)
-- [ ] **T-6**: Tab 補完 0 候補時に bell。04 §T-6
+- [x] **T-6**: Tab 補完 0 候補時に bell。04 §T-6
+  → read_line_c の補充分岐に `hits.is_empty()` で `\x07`(BEL)追記。pty プロブで分離確認:
+  無候補 Tab=新ベルあり/旧無音、1 候補 Tab=ベルなし+サフィックス echo 継続(fix #22)
 - [x] **T-7**: list_width/cand_at の当たり判定が文字数基準(CJK 候補でズレ)。セル数基準へ(Design Doc C と同時)。04 §T-7 → `cells_of` 追加、`list_width`/`cand_at` はセル合計、`read_line_c` の全 print!(キャレット配置/erase)は `caret_col`(二重単位の変換点を単関数に集約)経由へ。e2e s151(fix #8)
 - [ ] **T-8**: file_candidates: ディレクトリ末尾 `/`、ソート、`~` 展開。04 §T-8
-- [ ] **T-9**: VMIN/VTIME 明示設定。04 §T-9
+- [x] **T-9**: VMIN/VTIME 明示設定。04 §T-9
+  → save_raw_mode で `c_cc[VMIN]=1`/`c_cc[VTIME]=0` を明示(環境継承に依存しないblocking 1 バイト読み)。フル e2e 全入力経路が回帰網(fix #22)
 - [ ] **T-11**: print+flush 出力ヘルパー集約。04 §T-11
 - [x] **H-4**: md_styles 未閉結バッククォートのテスト追加。05 §H-4
   → unit md_unclosed_code_span_stops_at_line_end:未閉結 ` は行末まで装飾し次行を巻き込まないことをアサート(fix #21)
@@ -546,7 +549,7 @@
   `--all-targets` 0・unit 31/31(コメントのみでコード生成不変のため e2e 再実行は
   対象外。直前の 360c6b3 で CI=success・フル e2e 85/85=ランナー含め確認済み)。
   (fix #20 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #21(このコミット)**: 検査/装飾簇 B-9 残り・H-4・H-5・H-6。
+- 2026-10-25: **fix #21(コミット 26678f3)**: 検査/装飾簇 B-9 残り・H-4・H-5・H-6。
   B-9=unit 3 追加(movement クランプ境界/transpose 末尾/空バッファ編集)。
   H-4=md 未閉結 ` が次行を巻き込まない unit。H-5=数値スキャン修正(英字は 0x の
   直後だけ受理。`2face`→`2` のみ。`0x1F`/`0xDEADbeef`/`1.2` 不変)+unit。
@@ -557,3 +560,11 @@
   シナリオ(s90-s94)は 10 進数値のみで hex 依存なし(スキャン変更に安全)。
   ゲート APPROVE-WITH-CHANGES(Major-1=指数/二進の被装飾減少→復元で対応)。
   (fix #21 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #22(このコミット)**: T-6/T-9(terminal 挙動小 2 件)。
+  T-6=Tab 補完 0 候補で `print!("\x07")` BEL(旧=無音)。pty プロブ分離=
+  新 BELL_zero:True/BELL_one:False+サフィックス echo 継続、旧(HEAD worktree)
+  BELL_zero:False。T-9=save_raw_mode で c_cc[VMIN]=1・VTIME=0 明示
+  (ICANON 解除だけでは環境継承の c_cc に依存する)。clippy `--all-targets` 0・
+  build 0・unit 36/36・フル e2e 85/85(/tmp/e2e_run29.out=全入力経路の回帰網)・
+  release 6/6(/tmp/rs17.out)。
+  (fix #22 のコミットハッシュは次エントリに記載)

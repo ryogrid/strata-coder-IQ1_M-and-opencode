@@ -39,6 +39,11 @@ pub fn save_raw_mode() -> TtyGuard {
             t.c_lflag &= !(ICANON | ECHO | ECHOE | ECHOK | ECHONL | ISIG | IEXTEN);
             t.c_oflag &= !OPOST;
             t.c_iflag &= !(INLCR | IGNCR | ICRNL | IGNBRK | IXON | IXOFF);
+            // T-9: read() must return as soon as ONE byte arrives
+            // (blocking read with no timer). ICANON off alone leaves the
+            // inherited c_cc values in play; set them explicitly.
+            t.c_cc[VMIN] = 1;
+            t.c_cc[VTIME] = 0;
             let _ = tcsetattr(fd, TCSANOW, &t);
             // One-time leak (process-lifetime storage): shared with the
             // signal handlers through the static slot.
@@ -418,7 +423,15 @@ pub fn read_line_c(prompt: String, cands: Vec<String>, file_comp: bool) -> Optio
             let inp = str_of(out.clone());
             let pool = if file_comp { file_candidates(inp.clone()) } else { cands.clone() };
             let hits = completions(inp.clone(), pool);
-            if hits.len() == 1 {
+            if hits.is_empty() {
+                // T-6: no completion matches -> emacs rings the bell
+                // (the old branch fell through SILENTLY: no echo, no
+                // feedback). \x07 is BEL; terminals render it audibly
+                // (or visibly, per bell settings) and tmux passes it
+                // through (last-line "Bell" flag).
+                print!("\x07");
+                flush_stdout();
+            } else if hits.len() == 1 {
                 cur = out.len();
                 if !list.is_empty() { // input changes: the old list echo is stale
                     list = vec![];
