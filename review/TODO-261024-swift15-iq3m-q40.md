@@ -9,7 +9,7 @@
   - 各コミット前に `cargo build` `cargo test`(警告ゼロ・全通過)、挙動を変える修正では `bash test-design/e2e.sh`(現在 72 シナリオ全PASS)を確認
   - 複雑な修正は `docs/design/` に Design Doc を置く(対応関係が分かるファイル名)
   - 学習した内容は末尾「学習記録」に追記する
-- Design Doc 対応: A=`docs/design/exit-eof-robustness.md`(T-1,T-2,M-1,T-3,T-4,M-2,M-4,D-1)/ B=`docs/design/perf-highlight-buffer.md`(H-1,S-1,B-1,B-2,H-2,H-3)/ C=`docs/design/cjk-display-width.md`(S-2,T-7)
+- Design Doc 対応: A=`docs/design/exit-eof-robustness.md`(T-1,T-2,M-1,T-3,T-4,M-2,M-4,D-1)/ B=`docs/design/perf-highlight-buffer.md`(H-1,S-1,B-1,B-2,H-2,H-3)/ C=`docs/design/cjk-display-width.md`(S-2,T-7)/ D=`docs/design/keymap-dispatch-table.md`(M-11)
 
 ## Phase 1: 高優先(High)— 実測で再現確認済み
 
@@ -75,7 +75,17 @@
   - terminal.rs: `read_line`/`read_line_buffers`/`read_line_files`/`read_line_eof` の
     prompt を `impl Into<String>` 化(core の read_line_c は String のまま)。main の
     素 literal prompt 6 箇所の `.to_string()` 削除(fix #19)
-- [ ] **M-11**: 300行ディスパッチをテーブル化(architecture の keymap tree 記述と共に対応)。02 §M-11
+- [x] **M-11**: 300行ディスパッチをテーブル化(architecture の keymap tree 記述と共に対応)。02 §M-11
+  → Design Doc D =`docs/design/keymap-dispatch-table.md`(Design ゲート APPROVE-WITH-CHANGES、
+  Major 4 織り込み=C-x o 内部 sync_leaf 明記/矢印 3byte read 順(PrefixArrow)/
+  architecture as-built bullet も整合対象/登録)。実装=fix #27:
+  `src/keymap.rs` に単一バインド表(`plain_key`/`ctrl_x_key`/`meta_key`/`arrow_key`
+  +`Cmd` enum 網羅=42 variant)+main.rs に `Ed`(ループ状態 7 個の所有者)+1 コマンド 1 メソッド
+  (chain 本体は機械抽出で verbatim 移設)。トップ dispatch は Cmd 全列挙(`_` 無)、
+  byte 表側のみ `_ =>`。`Cmd::Noop`=素 byte 無言、`Unbound`=C-x 専用の msg、
+  Meta 未バインド無言、C-c fall through・moved 5 箇所・prev_cmd=トップ byte 不変。
+  architecture.md の Key input 節と as-built bullet(flat if-else)を実装記述へ置換。
+  unit +4(keymap 表アサート)=42/42(fix #27)
 - [x] **M-12**: prev_cmd は last-command 相当に限定(現状文書と整合、注記のみ)。02 §M-12
   → main.rs `prev_cmd` 宣言に注記(直前トップレベル バイトのみ/コマンド内部バイトは更新せず/C-y 連鎖は意図的に不可=README と整合、fix #20)
 - [x] **M-13**: leaf/bufs 間の point 書写しをヘルパー集約。02 §M-13
@@ -388,6 +398,29 @@
 - **CI 導入は e2e を素朴に通すだけで効く**:build/clippy(-D warnings)/unit/
   e2e の単一 job(GitHub ランナーに tmux 同梱)で、ローカルでは見えなかった
   環境差(上記 readdir 順)が初回実行で露呈した(fix #15/初回赤→fix #16 で緑)。
+- **Design Doc D(キーディスパッチ表)から得た教訓(M-11)**:
+  平坦 if-else を「enum Cmd + バインド表関数(plain_key/ctrl_x_key/meta_key/
+  arrow_key)+ 1 コマンド 1 メソッド」へ機械変換する際、挙動同一性の要は
+  (1) **読み取り順序の不変**:プレフィックスは検出直後に次 byte を 1 回読む
+  だけ。ESC 矢印は `ESC → 0x5b → t` の 3 段(isearch の ESC-`[` 消費 M-3 が
+  同一順序に依存)。表関数が矢印 variant を直接返せず `PrefixArrow` を返す
+  のはこのため。(2) **陥没経路の保存**:C-c は confirm 後 fall through して
+  素 map の無言 arm に着地(prev_cmd=0x03 で C-k 連打ちが切れる=仕様)。
+  素 byte 未バインドは無言、C-x 未バインドだけ "Undefined command"(M-7)、
+  Meta 未バインドは無言。無言着地用に `Cmd::Noop` を置き `Unbound` は
+  C-x 専用に限定した。(3) **`moved`/`prev_cmd` の代入位置**:moved=true は
+  5 箇所の表示切替のみ、sync_out は `!moved` のときだけ。C-x o はハンドラ
+  **内部**で sync_leaf → flatten(ループ末尾 sync をコマンド先頭へ移す意味)。
+  (4) ループ状態 7 個は `Ed` 1 つに集約し、`draw_all` が消費する `Tree` は
+  `std::mem::replace` のフィールド生やし替えで対応(field swap は frame() 内のみ)。
+  変換は body を chain から機械抽出(マーカー間スライス)して regex で
+  `bufs→self.bufs` 等を書き換えたが、**マーカーに本体テキストを含めると
+  本体が欠落**し、**meta 連鎖の閉じ brace が隣 body に混入**して_impl が
+  早 Closure_した(どちらも build/clippy の unused/区切りエラーで即検出)。
+  chain 本体の文字列(`format!("Wrote {}")`)を含む brace 総当たりは
+  ブレースキャンの誤匹配になるので機械検査は「ビルド+clippy」が正しい。
+  (5) 網羅性は「トップ dispatch は Cmd を全列挙(`_` 無)」で担保し、
+  byte 表側(`ctrl_x_key` 等)だけ `_ =>` を許す(Design Doc D §3.1)。
 
 ## 変更履歴
 
@@ -702,3 +735,28 @@
   を所有権移動へ(パラメータ msg は label 以降 dead)。ゲート記載の pre-existing
   指摘(main.rs 209 `Some(path.clone())`=path は最終使用、移動可)は M-14 の
   追及外として TODO に記録(次回の掃除候補)。
+- 2026-10-25: **fix #27(このコミット)**: M-11 ディスパッチのテーブル化
+  (Design Doc D 実装、挙動・出力 byte 同一=89 e2e 全通過で担保)。
+  `src/keymap.rs`=単一バインド表+`Cmd` enum(42 variant、#[derive(PartialEq,Eq,Debug)])。
+  main.rs=chain 300 行を `Ed`(bufs/tree/active/msg/killed/prev_cmd/moved)の
+  1 コマンド 1 メソッドへ機械移設(body は marker 間スライス抽出、`bufs→self.bufs`
+  等の word-boundary 書換えのみ)。`draw_all` の Tree 消費は frame() 内の
+  `std::mem::replace` 生やし替え(_dummy tree は即破棄、frame() 外で ed.tree を触らせない_)。
+  陥没保存=C-c fall through(素 map 無言 `Noop`)・C-x 未バインド msg(M-7)・
+  Meta 未バインド無言・矢印 `ESC→0x5b→t` 3 段(PrefixArrow)・isearch ループは
+  1 メソッドに丸ごと(ESC-[ 消費 M-3 維持)・C-x o はハンドラ内 sync_leaf→flatten。
+  変換中の実障害 2 件=マーカーに本体語を含むと backward/forward_word の語が
+  消滅(dead_code 警告で検出)、meta 連鎖閉じ brace が隣 body 混入で impl 早
+  closure(括号エラーで検出)→学習記録に。
+  architecture.md=Key input 節+as-built flat bullet を表記述へ置換(curses 記述は
+  範囲外=fix #17 で別整合済みの箇所、触らず)。
+  証拠=unit 42/42(+keymap 表 4)・build/clippy `--all-targets` 0
+  (clippy `match`→`if let` 1 件は修正で駆逐・`#[allow]` 不使用)・
+  `RUSTFLAGS=-D warnings --locked --all-targets` rc0・フル e2e 89/89(run34、
+  binary mtime 14:06:47>最終 src 14:06:25)+release smoke 6/6(rs22)・probe25 PASS。
+  ゲート APPROVE(chain 全 arm 対応表+31 本体の statement 級 diff 0・HEAD -binary と
+  の A/B tmux byte diff 0=pane+カーソル位置一致・prompt 10 文言 verbatim)。
+  ゲート Minor 織り込み=台帳の enum 件数 40→42 訂正・word 書換えがコメントに
+  漏らした `self.` 3 箇所(migrated comments)の原語復元。ゲート記載の
+  pre-existing 指摘=keybindings.md の main-buffer 矢印(ESC-[ A-D)は Minibuffer
+  節にしか記載無し(表には存在)=keybindings.md は本 fix 範囲外、掃除候補として記録。

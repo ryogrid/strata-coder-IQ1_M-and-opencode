@@ -48,7 +48,9 @@ leaves in tree order. `Ctrl-x 1` collapses the tree to a single leaf.
 ## Key input
 
 `termios` puts the tty in raw mode so control codes arrive as raw bytes. A
-small keymap tree resolves byte sequences:
+the binding table in `src/keymap.rs` (`plain_key`/`ctrl_x_key`/
+`meta_key`/`arrow_key`, resolving to one shared `Cmd` enum) reads byte
+sequences:
 
 - self-inserting printable characters,
 - control characters (`Ctrl-a`..`Ctrl-z`) mapped to commands,
@@ -79,9 +81,12 @@ deviates (measured against `src/` as of 2026-10):
   `Vec<char>` region and insertions memmove the tail
   (`buffer.rs`; analysis `review/01-buffer.md` B-1). The gap itself is
   real (no per-insert reallocation at the gap).
-- **Key dispatch is a flat if-else chain**, not a keymap tree:
-  `main.rs` reads a byte (plus prefix byte after `Ctrl-x`, plus `ESC [`
-  arrow sequences) and walks `if/else if` comparisons.
+- **Key dispatch is a single binding table**, not a runtime keymap
+  tree: `keymap::plain_key` maps one byte to a `Cmd` (prefix commands
+  `PrefixCtrlX`/`PrefixMeta`/`PrefixArrow` make `main.rs` read exactly
+  the one next byte; `ESC [ t` arrows resolve via `arrow_key`), and
+  `main.rs` dispatches each `Cmd` to one `Ed` method. The user-editable
+  keymap tree of Emacs does not exist (Design Doc D).
 - **Rendering is hand-written ANSI escape sequences** printed via
   `print!` (`screen.rs`, `terminal.rs`). `curses` is used ONLY for the
   terminal size query (`curses::canvas::get_size`); with stdout
