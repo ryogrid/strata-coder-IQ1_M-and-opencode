@@ -24,6 +24,11 @@ pub struct TtyGuard {
 
 static SAVED_TERMIOS: AtomicPtr<Termios> = AtomicPtr::new(std::ptr::null_mut());
 
+// T-5: fd 0 is hard-wired. When stdin is NOT a tty (pipe/redirect)
+// tcgetattr fails and NOTHING is configured: the guard carries saved =
+// None and restores nothing. The design gives up raw mode gracefully
+// there - tmux e2e drives emur through a pty, and a keyboard-less stdin
+// has no control codes to deliver raw anyway.
 pub fn save_raw_mode() -> TtyGuard {
     let fd = 0; // stdin
     let t = Termios::from_fd(fd);

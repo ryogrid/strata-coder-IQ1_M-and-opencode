@@ -168,6 +168,10 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
         let pos = point_pos(&views[bidx].as_ref().unwrap().chars, tree.leaves[leaf_idx].point);
         leaf_pos[leaf_idx] = (pos[0], pos[1]);
         let pline = pos[0];
+        // S-6: scroll is RECOMPUTED from point every frame (follow the
+        // point line by line; NO stateful page turns). The leaf's stored
+        // scroll is only the starting point of this frame's clamp, so
+        // repeated draws are idempotent - matching README's scroll text.
         let mut scroll = tree.leaves[leaf_idx].scroll;
         if pline < scroll {
             scroll = pline;
@@ -267,7 +271,13 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
 
     if have_cursor {
         if rows > 1 && crow > rows - 2 {
-            crow = rows - 2; // never park the cursor on the status row
+            crow = rows - 2; // never park the cursor on the status row.
+            // S-7: DEFENSIVE - the layout height is rows-1 (the status
+            // row is excluded), and the scroll clamp keeps
+            // crow = top + (pline - scroll) <= top + height - 1 <= rows-2
+            // for every split shape, so crow > rows-2 is UNREACHABLE
+            // while that invariant holds. The guard protects the status
+            // row if that ever changes (point/caret logic untouched).
         }
         print!("\x1b[{};{}H", crow + 1, ccol + 1);
         super::terminal::flush_stdout();

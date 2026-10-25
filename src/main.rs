@@ -112,6 +112,11 @@ fn main() {
     let mut tree = window::new_tree(0);
     let mut active = 0;
     let mut killed = "".to_string();
+    // M-12: byte of the PREVIOUS top-level command only (a simplified
+    // Emacs last-command: the C-k kill-run test is prev_cmd == 0x0b;
+    // bytes consumed INSIDE a C-s/C-x prefix do not touch it mid-command,
+    // and chaining C-y to C-y is intentionally not expressible). README
+    // documents exactly this "any other command ends the run".
     let mut prev_cmd = 0;
     loop {
         tree = screen::draw_all(&bufs, tree, active, msg.to_string());

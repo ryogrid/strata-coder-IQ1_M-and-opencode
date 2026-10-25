@@ -10,6 +10,11 @@ pub struct Leaf {
 }
 
 pub struct Node {
+    // S-9: vertical = true means STACKED (C-x 2 split-window-below:
+    // children above/below sharing a '-' boundary ROW); false means SIDE
+    // BY SIDE (C-x 3 split-window-right, sharing a '|' boundary COLUMN).
+    // Read the flag as "split along the vertical axis" - Emacs' "-right"
+    // is a horizontal placement, so the name reads backwards at a glance.
     pub vertical: bool,
     pub a: usize,
     pub b: usize,
@@ -93,6 +98,12 @@ impl Tree {
                 a.extend(self.layout(self.nodes[k].b, top, height, col + w1, width - w1));
                 a
             } else {
+                // S-12: width < 2: unsplittable. Both children get the
+                // SAME geometry (full overlap): drawing garbles there by
+                // design. Reachable only through a deep C-x 3 cascade
+                // (at 80 cols: 80->40->20->10->5->2->1, ~7 splits on the
+                // always-active left leaf); kept simple with NO clipping
+                // machinery on purpose.
                 let mut a = self.layout(self.nodes[k].a, top, height, col, width);
                 a.extend(self.layout(self.nodes[k].b, top, height, col, width));
                 a

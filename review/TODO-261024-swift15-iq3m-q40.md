@@ -75,7 +75,8 @@
     prompt を `impl Into<String>` 化(core の read_line_c は String のまま)。main の
     素 literal prompt 6 箇所の `.to_string()` 削除(fix #19)
 - [ ] **M-11**: 300行ディスパッチをテーブル化(architecture の keymap tree 記述と共に対応)。02 §M-11
-- [ ] **M-12**: prev_cmd は last-command 相当に限定(現状文書と整合、注記のみ)。02 §M-12
+- [x] **M-12**: prev_cmd は last-command 相当に限定(現状文書と整合、注記のみ)。02 §M-12
+  → main.rs `prev_cmd` 宣言に注記(直前トップレベル バイトのみ/コマンド内部バイトは更新せず/C-y 連鎖は意図的に不可=README と整合、fix #20)
 - [x] **M-13**: leaf/bufs 間の point 書写しをヘルパー集約。02 §M-13
   - main.rs に `sync_leaf`(bufs→leaf の point/mark 書写し:C-x o 直前・ループ末尾の
     2 箇所)と `attach_leaf`(buffer 添付+point/mark/scroll=0:C-x b 切替 2 箇所+
@@ -87,13 +88,18 @@
 - [x] **M-15**: alias キル後の stale leaf-point で panic(fix #7 ゲート発見・既存バグ)。`C-x 2`→`C-e`→`C-x o`→`C-x k`→`C-x o`→`x` で buffer.rs move_gap 添字外(pure legacy キーで再現、M-6 以前から存在)。`C-x k`時に buffer を指す全 leaf の point/mark/scroll を 0 化、かつ/または main ループ先頭 sync で `point.min(buf.len())` クランプ。M-13 と併せて対応可 → 両方実施(C-x k=全 alias leaf を 0 化/ループ先頭=point・mark を len にクランプ)。e2e s153(旧 worktree で panic 確認・新 PASS、fix #9)
 - [ ] **M-14**: .to_string()/clone 乱用を API 変更で削減。02 §M-14
 - [ ] **S-5**: Frame.kind を enum 化(境界 Frame の leaf ダミー除去)。03 §S-5
-- [ ] **S-6**: scroll 再計算の不変条件をコメント化。03 §S-6
-- [ ] **S-7**: 分割時カーソルと status clamp の関係コメント。03 §S-7
+- [x] **S-6**: scroll 再計算の不変条件をコメント化。03 §S-6
+  → screen.rs scroll 再計算部コメント:毎フレーム point から再計算(ページ送りなし)、leaf の scroll は次フレームの開始点で再描画は冪等(fix #20)
+- [x] **S-7**: 分割時カーソルと status clamp の関係コメント。03 §S-7
+  → screen.rs `rows - 2` クランプに注記。finding の主張(下窓最下行でカーソルが 1 行上に見える衝突)はゲートで不可 reach と再判定:layout 高さ=rows-1 と scroll クランプにより crow<=rows-2 が常に成立、クランプは防御的デッドコード(finding 本文よりコードが正しい、fix #20)
 - [ ] **S-8**: find_slot センチネルを Option<usize> へ。03 §S-8
-- [ ] **S-9**: Node.vertical の命名/コメント改善。03 §S-9
+- [x] **S-9**: Node.vertical の命名/コメント改善。03 §S-9
+  → Node.vertical に注記:true=縦積み(C-x 2・`-` 行共有)/false=横並び(C-x 3・`|` 列共有)。Emacs の -right は水平配置で名は逆向きに読める(fix #20)
 - [x] **S-10**: point_pos の同一フレーム2回呼びを1回化。03 §S-10 → fix #2 で leaf 単位 1 回化(leaf_pos ベクタでスクロール前計算とカーソル配置で共有)
-- [ ] **S-12**: レイアウト重なりデジェネレートのコメント。03 §S-12
-- [ ] **T-5**: fd0 固定の設計注記(stdin 非 tty で raw mode なし)。04 §T-5
+- [x] **S-12**: レイアウト重なりデジェネレートのコメント。03 §S-12
+  → 幅<2 の非分割(両子同一ジオメトリ)に注記。ゲート訂正:80 列でも C-x 3 を約 7 回(左 leaf 追従で 80→40→…→1)で到達しうる。クリップ機構は意図的に持たない設計と明記(fix #20)
+- [x] **T-5**: fd0 固定の設計注記(stdin 非 tty で raw mode なし)。04 §T-5
+  → save_raw_mode の doc に fd0 固定・非 tty では tcgetattr 失敗=saved None で復元なし(pty 前提の設計、graceful 放弃)を明記(fix #20)
 - [ ] **T-6**: Tab 補完 0 候補時に bell。04 §T-6
 - [x] **T-7**: list_width/cand_at の当たり判定が文字数基準(CJK 候補でズレ)。セル数基準へ(Design Doc C と同時)。04 §T-7 → `cells_of` 追加、`list_width`/`cand_at` はセル合計、`read_line_c` の全 print!(キャレット配置/erase)は `caret_col`(二重単位の変換点を単関数に集約)経由へ。e2e s151(fix #8)
 - [ ] **T-8**: file_candidates: ディレクトリ末尾 `/`、ソート、`~` 展開。04 §T-8
@@ -497,7 +503,7 @@
   release 6/6(/tmp/rs11.out)。s156 追加による release_smoke 行範囲(1,53/543,545)は
   末尾追加のため不変(実測)。ゲートレビューはコミット前に実施。
   (fix #18 のコミットハッシュは次エントリに記載)
-- 2026-10-25: **fix #19(このコミット)**: B-10(API スタイル)。buffer.rs の全 29
+- 2026-10-25: **fix #19(コミット 360c6b3)**: B-10(API スタイル)。buffer.rs の全 29
   メソッド receivers を `&self`/`&mut self` 化。`Buffer::new` を `impl Into<String>` 2 引数に
   (テスト 14・main 6 呼び出しの literal `.to_string()` 消去。&String 引数は明示 clone)。
   terminal.rs の read_line 系 4 ラッパ(read_line/read_line_buffers/read_line_files/
@@ -510,3 +516,11 @@
   フル e2e 85/85・release 6/6=最終ツリーでコミット前に実行(/tmp/e2e_run24.out は
   B-10 単体・run26/rs14 は B-10+M-13 最終)。ゲートレビューはコミット前に実施。
   (fix #19 のコミットハッシュは次エントリに記載)
+- 2026-10-25: **fix #20(このコミット)**: 注記簇 S-6/S-7/S-9/S-12/T-5/M-12(コメントのみ、
+  コード挙動不変)。S-6=scroll 毎フレーム再計算の不変条件、S-7=`rows-2` クランプの
+  見かけ 1 行上説明、S-9=`Node.vertical` の向き注記(true=縦積み/false=横並び)、
+  S-12=幅<2 同一ジオメトリ重なり容忍の設計、T-5=`save_raw_mode` の fd0 固定/非 tty
+  graceful 放弃 doc、M-12=`prev_cmd` last-command 簡略化の範囲。build 0・clippy
+  `--all-targets` 0・unit 31/31(コメントのみでコード生成不変のため e2e 再実行は
+  対象外。直前の 360c6b3 で CI=success・フル e2e 85/85=ランナー含め確認済み)。
+  (fix #20 のコミットハッシュは次エントリに記載)
