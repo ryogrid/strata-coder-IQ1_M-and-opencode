@@ -284,13 +284,14 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
-- 2026-10-26: P3 CI flake 対応(this commit):CI run 40243973196(df47fbe)
+- 2026-10-26: P3 CI flake 対応=コミット aa5995e:CI run 40243973196(df47fbe)
   の p3_window_walk 失敗をトリアージ=**プロダクト正常・テスト側過強断言**
   (PBTF-008 登記)。断言を `pane.contains("alpha")` →
   「ウィンドウ行に英字(text-gone=全 @ 検出の本来意図)」へ弱体化。
   再現=ローカル 3 周目(PBT_CASES=8)。pbt-design/03 §P3 更新。
-  検証:p3 4 周(PBT_CASES=16)+tmux_fuzz フル+combination(変更不要の
-  ため CI 任せ)。コードゲート済み(PASS、minor 織り込み済みの範囲内)。
+  検証:p3 4 周(PBT_CASES=16)+tmux_fuzz フル緑。CI 実証:df47fbe の
+  p3 失敗は初回フラケ(ab76d62/3dcd5ad/aa5995e 連続緑、P5-P7 CI
+  ステップも runner 初緑 7m15s)。コードゲート済み(PASS)。
 - 2026-10-26: コードゲート(ミラー忠実度レビュー)=PASS・BLOCKER 0/Minor 7
   全件織り込み=コミット ab76d62。模型側修正=isearch 制御バイト arm を
   本番実態へ(bell+破棄+続行。break は EOF のみ main.rs:488-490)、
