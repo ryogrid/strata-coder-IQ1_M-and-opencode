@@ -202,7 +202,9 @@ Checkpoints (settle 0.5 s each, max 3 per case):
 - after a checkpointing `C-x 3`: >= 1 line containing a `|` column char;
 - final phase: always end with `-H 18 31` (C-x 1) + settle, then assert
   NO 8-dash-run line and NO lone-`|` structure line; buffer text
-  visible (`alpha` present in the capture).
+  visible = SOME alphabetic char on the window rows (NOT the seed word
+  `alpha` - typing at a stale alias-leaf point can legitimately split
+  the word, found-bugs PBTF-008).
 
 Plus P1 invariants 1-4. Config: 16 cases, 1..16 ops.
 

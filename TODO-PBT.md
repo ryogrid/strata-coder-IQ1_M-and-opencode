@@ -155,6 +155,16 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 学習記録
 
+- 2026-10-26(P3 flake/PBTF-008):定性的プロパティの断言は**設計の不変
+  条件**であって**seed の文字列リテラル**であってはならない。分割ツリー
+  のエイリアス leaf は point 独立(window.rs:151-156)なので、split 時
+  copy の stale point(=split までの挿入数)でタイプすると seed 語
+  "alpha" の内部(2-4 文字目)に正当に着弾し、部分文字列は消える
+  (status 1/3 12% は pt3/len24 と完全一致=自己整合フレーム)。P3 の
+  `pane.contains("alpha")` は buffer-only 時代の過強断言で、約 6 回の
+  CI 緑後に初めて割れた(proptest seed は実行毎乱数=潜伏期間が長い)。
+  弱体化=ウィンドウ行に英字が 1 つ(=collapse 全 @ 化の検出=元来意図)。
+  陽な leaf-point 独立性は P5 全面グリッドが正面から固定済み。
 - 2026-10-26(結合テスト実装):モデルミラーの発散は「キーの意味」では
   なく**ループの境界規則**に潜む。(1) 本番 `sync_in` は clamp 後に
   leaf→buffer へ**コピー**する(main.rs:171-184)。模型が clamp だけ
@@ -274,6 +284,13 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
+- 2026-10-26: P3 CI flake 対応(this commit):CI run 40243973196(df47fbe)
+  の p3_window_walk 失敗をトリアージ=**プロダクト正常・テスト側過強断言**
+  (PBTF-008 登記)。断言を `pane.contains("alpha")` →
+  「ウィンドウ行に英字(text-gone=全 @ 検出の本来意図)」へ弱体化。
+  再現=ローカル 3 周目(PBT_CASES=8)。pbt-design/03 §P3 更新。
+  検証:p3 4 周(PBT_CASES=16)+tmux_fuzz フル+combination(変更不要の
+  ため CI 任せ)。コードゲート済み(PASS、minor 織り込み済みの範囲内)。
 - 2026-10-26: コードゲート(ミラー忠実度レビュー)=PASS・BLOCKER 0/Minor 7
   全件織り込み=コミット ab76d62。模型側修正=isearch 制御バイト arm を
   本番実態へ(bell+破棄+続行。break は EOF のみ main.rs:488-490)、

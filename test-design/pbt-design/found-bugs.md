@@ -239,4 +239,51 @@ prompt sees; the extra also covers a pending C-x prefix). Landed
 Notes: found by the full-case suite, not by smoke - the class of bug
 only deep runs hit.
 
+## PBTF-008 - P3 "text visible" assertion over-strong (test-side, NOT a product bug)
+
+- date: 2026-10-26
+- property: P3 window_walk (tmux_fuzz)
+- severity: ux (test flake: false failure)
+- status: FIXED (test-side; landed with the P5-P7 gate commit)
+
+Summary: the final-phase assertion `pane.contains("alpha")` fires
+("text gone") after a legal op sequence in a split tree. The product
+behaves as designed; the property asserted a SPECIFIC seed word
+staying contiguous, which typing at a stale alias-leaf point can
+legitimately break.
+
+Reproduction:
+- EMUR_BIN: target/debug/emur (master, P5-P7 implementation)
+- CI run 40243973196 shrunk sequence: [Enter, Split3, Undo, Other,
+  Split3, Type(' '), DelOther] + the test's closing C-x 1.
+- Local repro (PBT_CASES=8, round 3): [Type(' '), Type('a'), Split2,
+  Undo, Other, Type('a')] + closing C-x 1.
+- seed: `alpha beta\ngamma delta\n`; replay: same hex as send_p3.
+
+Observed: final capture = window rows all `@`-tail, status
+`Buf ... * 1/3 (12%)` (local) / `(8%)` (CI); `alpha` absent.
+Expected (old 03 P3): "buffer text visible (`alpha` present)".
+
+Analysis: aliasing leaves share text with INDEPENDENT point/mark/scroll
+(window.rs:151-156; combination 02 §1). `C-x o` to the sibling whose
+point was copied at split time (e.g. 2) types AT that stale point after
+an undo reset the active leaf (leaf 0) to 0: the inserted char lands
+inside the word ("al^pha beta"), so the substring "alpha" legitimately
+vanishes; the status geometry (1/3, 12%) matches the stale point EXACTLY
+(pt 3 / len 24) - self-consistent frame, no product defect. The
+qualitative P3 property predates the per-leaf-point model (P2 was
+buffer-only), so the over-strong word assertion never met this class.
+
+Fix: assertion weakened to "SOME alphabetic char on the window rows"
+(pane.lines().take(23).any(is_alphabetic)) - the liveness check P3 was
+built for (a collapsed all-`@` screen after C-x 1). 03 P3 final-phase
+updated. The positive per-leaf-point behavior is pinned by the P5
+full-pane grid model (combination), which mirrors leaf-point
+independence + sync_in/sync_out verbatim.
+Notes: proptest seeds are random per run - CI hit it on the first run
+after ~6 green runs; 3 local rounds at PBT_CASES=8 reproduced. Flake
+budget lesson: qualitative properties must assert INVARIANTS of the
+design, not literals from the seed, whenever the op pool can mutate
+the literal's neighborhood.
+
 (no further entries)
