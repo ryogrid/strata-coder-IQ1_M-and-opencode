@@ -149,8 +149,9 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
       case11 send_hex 漏れ)。**emur 実バグ 0 件=新 PBTF なし**
 - [x] H3 CI 統合(ci.yml に P5-P7 ステップ:PBT_CASES=8、
       EMUR_BIN=../target/debug/emur、--test-threads=1)+pbt-run.sh 第 3 段
-- [~] H4 台帳締め(このコミット。学習記録+変更履歴+ハッシュ・バックフィル)。
-      コードゲート→commit -n+push→CI 緑→ハッシュ確定
+- [x] H4 台帳締め:学習記録+変更履歴+ハッシュ確定(df47fbe 実装+
+      ab76d62 ゲート織り込み)。コードゲート PASS・全ローカル直列緑
+      (pbt-run 6m39s/e2e 3m42s/release_smoke PASS)。CI 緑確認済み
 
 ## 学習記録
 
@@ -274,14 +275,14 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 ## 変更履歴
 
 - 2026-10-26: コードゲート(ミラー忠実度レビュー)=PASS・BLOCKER 0/Minor 7
-  全件織り込み:this commit。模型側修正=isearch 制御バイト arm を
+  全件織り込み=コミット ab76d62。模型側修正=isearch 制御バイト arm を
   本番実態へ(bell+破棄+続行。break は EOF のみ main.rs:488-490)、
   ESC の 1 バイト無条件消費(452-465)、コメント実在順序修正(kill
   tail=y,e,s,Enter 着順)、引用 490→503、file_candidates の CWD
   arm 注記(production は dir="." 既定、模型は絶対パス pool で
   非到達)、capture_poll 文書 4x 化、send_hex 空ベクトル assert
   (tmux -H 法 05 §13)。再走:combination 全 25 緑 192.97s。
-  実装一式=コミット df47fbe(CI 走査中)。
+  実装一式=コミット df47fbe、ゲート織り込み=ab76d62。
 - 2026-10-26: 結合テスト(P5-P7)実装一式:this commit。`combination.rs`
   新規(support 3 層化 core/sess/sanity 併載:mod.rs 経由で tmux_fuzz は
   sanity を、combination は core+sess のみ+ローカル comb_sane を使用。
