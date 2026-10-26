@@ -155,6 +155,15 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 学習記録
 
+- 2026-10-26(ハイライト/SGR):属性レイヤは**全面 grid テキスト比較を
+  素通りする**(capture-pane -p はテキストのみ)→ P5-P7 模型変更不要、
+  ピンは e2e の `-e` capture(expect_e)で行う。ウィンドウ単位の描画状態は
+  **leaf 所有フィールドから読む**-`bufs[bidx].mark` は直近同期分であり、
+  ループ頭の frame() は sync_in より先に走るためウィンドウ切替直後の
+  1 帧だけ 1 コマンド遅延する(ゴースト region の実体=live 分割プローブ
+  でしか拾えないクラス)。e2e フル走の flake は tmux サーバ側积累
+  (生存セッション数十+ホスト負荷)で**失敗箇所が移動**する=単独再走全緑
+  ならタイミング級と判じてよい(s63/s28/s130 が移動、r20 全緑)。
 - 2026-10-26(C-v/M-v/C-w+isearch 統一):tmux capture-pane は**カーソル下の
   blank をキャプチャから落とす**ため、leading space を含む行アサーションは
   カーソルを退避させてから capture する。`expect_lastline` は完全一致で
@@ -292,6 +301,21 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
+- 2026-10-26: isearch マッチ+region のリアルタイム背景ハイライト
+  (Style::Isearch=43m 黄/Style::Region=46m 青、screen.rs `apply_span`、
+  `Ed::isearch_hi` で C-s/C-r の現マッチを**全ウィンドウ**描画、region は
+  active leaf の **leaf 所有** point/mark から描画=ウィンドウ切替直後の
+  bufs.mark 1 コマンド遅延ゴーストを回避、マッチ表示中は region 抑止、
+  DEL でクエリ空になると描画解除。テキストは無変更=属性のみ)。
+  e2e に s165(43m ライブ+延長+Enter で消える)/s166(46m ライブ+
+  C-@ で消える)追加=95 シナリオ。unit +1(apply_span intersection)=54。
+  コードゲート 2 回:1 回目に MAJOR 2 件(①isearch 描画が active leaf
+  のみに限定=alias window 描画漏れ、②`bufs[bidx].mark` 使用で切替直後の
+  入力側ウィンドウにゴースト region)→全て织り込み再ゲート 6/6 PASS。
+  検証:unit 54、combination P5/P6/P7/P7b 全緑(grid はテキストのみ=
+  属性は不感知。05 §15 に登記)、e2e 95/95 緑(r18/r19 で s63/s28/s130 が
+  移動 flake=負荷タイミング級。単独全緑+フル r20 緑)、pbt-run 全段緑、
+  release_smoke PASS。
 - 2026-10-26: C-v/M-v/C-w 実装+C-s/C-r 統一増分 isearch ループ=コミット cfc4404
   (CI 緑)のプロダクト
   keymap.rs/buffer.rs/main.rs+README 実態化)と P5 combination ミラー追従

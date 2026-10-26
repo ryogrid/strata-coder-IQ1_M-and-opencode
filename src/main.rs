@@ -112,6 +112,10 @@ struct Ed {
     // undo itself) breaks the run at the loop BOTTOM.
     group_alive: bool,
     touched: bool,
+    // Live isearch highlight: (buffer, match START, match len) while the
+    // C-s/C-r loop displays a match; None otherwise (the draw overlays
+    // Style::Isearch, screen.rs).
+    isearch_hi: Option<(usize, usize, usize)>,
 }
 
 // One undo entry: the pre-change full state of buffer `bi` plus the
@@ -165,7 +169,13 @@ impl Ed {
         // M-11: draw_all consumes and returns the Tree; swap the field
         // out and back (the dummy tree from new_tree is dropped unused).
         let t = std::mem::replace(&mut self.tree, window::new_tree(0));
-        self.tree = screen::draw_all(&self.bufs, t, self.active, self.msg.to_string());
+        self.tree = screen::draw_all(
+            &self.bufs,
+            t,
+            self.active,
+            self.msg.to_string(),
+            self.isearch_hi,
+        );
     }
 
     fn sync_in(&mut self) {
@@ -444,6 +454,7 @@ impl Ed {
         // A forward hit puts point at the match END; a backward hit
         // puts it at the match START (the side the search came from).
         let orig = self.bufs[bi].point;
+        self.isearch_hi = None; // no match painted on entry
         let mut qs: Vec<char> = vec![];
         let mut last = orig; // start position of the current match
         let szs = screen::term_size();
@@ -482,6 +493,9 @@ impl Ed {
             if c2 == 0x07 { cancelled = true; break; } // Ctrl-g: cancel
             if c2 == 0x7f { // backspace: drop the last query char
                 if !qs.is_empty() { qs.pop(); }
+                if qs.is_empty() {
+                    self.isearch_hi = None; // no match left to paint
+                }
                 if !qs.is_empty() {
                     let q2 = terminal::str_of(&qs);
                     let qlen = qs.len();
@@ -540,6 +554,7 @@ impl Ed {
         } else {
             self.msg = "".to_string();
         }
+        self.isearch_hi = None; // the loop's last match stops painting
     }
 
     // One search hop: forward = find_forward(q, last+1) then wrap to 0;
@@ -561,6 +576,7 @@ impl Ed {
     fn search_match(&mut self, bi: usize, backward: bool, pos: usize, qlen: usize, last: &mut usize) {
         self.bufs[bi].point = pos;
         *last = if backward { pos } else { pos - qlen };
+        self.isearch_hi = Some((bi, *last, qlen)); // paint the match span
     }
 
     // Progressive display: sync the leaf point to the moving match,
@@ -853,6 +869,7 @@ fn main() {
         undo: vec![],
         group_alive: false,
         touched: false,
+        isearch_hi: None,
     };
     loop {
         ed.frame();
@@ -980,6 +997,7 @@ mod tests {
             undo: vec![],
             group_alive: false,
             touched: false,
+            isearch_hi: None,
         }
     }
 

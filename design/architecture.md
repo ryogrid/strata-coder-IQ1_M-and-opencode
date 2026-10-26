@@ -59,11 +59,20 @@ sequences:
 
 ## Rendering
 
-`curses` draws the screen each frame:
+`screen.rs` draws the WHOLE screen every frame by hand-written ANSI
+sequences (the `termsize` crate is used ONLY for the SIZE query):
 
-- one status/echo line at the top,
-- each window's visible lines within its rectangle,
-- a cursor placed at the active window's point.
+- each window's visible lines within its rectangle (per-cell, with the
+  syntax-highlight style tokens from `highlight.rs`),
+- the status/echo line pinned to the BOTTOM row (buffer name, modified
+  flag, line/total, position percentage, or the current msg),
+- the terminal cursor parked at the active window's point.
+
+Two live overlays are painted on the ACTIVE window by background color
+(screen.rs `apply_span` - attributes only, the text is untouched): the
+current isearch match (yellow, driven by `Ed::isearch_hi`, suppressed
+over the region paint) and the mark..point region (cyan, from the leaf
+point + buffer mark).
 
 ## Command flow
 

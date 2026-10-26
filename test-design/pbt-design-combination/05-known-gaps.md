@@ -84,3 +84,10 @@
    in-target). Mitigation: every mirror rule carries the production
    file:line; the design gate verifies rule-for-rule; e2e keeps
    production pinned. Residual risk recorded honestly.
+15. **SGR attributes are OUT of the grid comparison**: the full-grid diffs
+   compare TEXT (`capture-pane -p`). The two live overlays added later
+   (isearch match = yellow bg `43m`, mark..point region = cyan bg `46m`,
+   screen.rs `apply_span` - attribute-only, text never touched) therefore
+   change NO model grid (P5-P7 re-ran green unchanged). Their visible
+   pins are the e2e `-e` captures (s165/s166). Model-side face painting
+   = v2 candidate.

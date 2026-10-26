@@ -113,6 +113,18 @@ Run the editor from a real terminal:
   region: insertion (typing, `C-j`/`C-m`/`C-o`, `C-y` paste) and
   backspace move the mark to point; re-arm the region with `C-@`.
   `C-d` and `C-k` keep the region.
+- **Live highlighting** — the ACTIVE window paints two overlays
+  (background colors; the text is never touched): the CURRENT isearch
+  match gets a yellow background from the moment it matches (it extends
+  / moves with every typed char and with the direction switch, and
+  stops at accept/C-g/EOF); a marked region gets a cyan background from
+  mark to point, repainted on EVERY command - motions extend it live,
+  typing collapses it (the mark follows point, see Regions), and `C-@`
+  with mark == point turns it off. The match paint shows in EVERY
+  window showing the searching buffer; the region paint is ACTIVE-window
+  only, and a displayed match SUPPRESSES the region paint (the match
+  owns the highlight, Emacs style); region/match spans cover fullwidth
+  chars cell-wise.
 - **Incremental search** — `C-s`/`C-r` share ONE incremental loop
   (forward/backward), the Emacs isearch model: every typed char extends
   the query and moves point to the next match IN THE CURRENT DIRECTION
@@ -242,7 +254,7 @@ Run the editor from a real terminal:
 | `C-w` | kill-region: cut the region between mark and point (point AND mark land at the region start; an empty region does nothing); consecutive `C-w`s accumulate the killed text |
 | `C-y` | paste killed text at point (consecutive `C-k`s accumulate, including the newline) |
 | `C-/` | undo: restore the last change (text + point + mark, buffer marked modified); consecutive typing = one group, consecutive `C-k` = one group, any other command breaks the run; bounded to 200 groups; `C-x k` clears the buffer's entries; echo `Undo` / `No change to undo` (arrives as byte `0x1f`, the same code `C-_` sends) |
-| `C-@` (`C-space`, NUL) | set the mark at point (start a region); when mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the region edge |
+| `C-@` (`C-space`, NUL) | set the mark at point (start a region); when mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the region edge; mark..point is painted cyan in the ACTIVE window, live on every move |
 | `C-q` | quote: insert next key literally |
 | `C-x C-f` | open file in a new split window below (buffer name = path, status shows it; an existing buffer for that file is reused, not reloaded; prompt in the bottom row, end with Enter; Tab completes a path from the directory listing) |
 | `C-x b` | switch-to-buffer: buffer name typed in the bottom-row minibuffer prompt (Tab completes a buffer name), Enter switches the active window to that buffer (creates an empty one if new) |
@@ -254,7 +266,7 @@ Run the editor from a real terminal:
 | `C-x 2` / `C-x 3` | split window below / right |
 | `C-x o` | select next window (cycles all windows) |
 | `C-x 1` | delete other windows |
-| `C-s` | incremental search (forward): each typed char moves point to the next (wrapping) match and repaints the screen, so the match scrolls into view without Enter; typing `C-s` repeats the query, `C-r` switches the search to backward and re-searches; `DEL` pops one query char and re-searches; a char that matches nowhere rings the bell and is dropped; Enter accepts, Ctrl-g cancels (point restored), arrow keys accept and move point |
+| `C-s` | incremental search (forward): each typed char moves point to the next (wrapping) match and repaints the screen, so the match scrolls into view without Enter; typing `C-s` repeats the query, `C-r` switches the search to backward and re-searches; the current match is painted yellow-background LIVE (no Enter needed); `DEL` pops one query char and re-searches; a char that matches nowhere rings the bell and is dropped; Enter accepts, Ctrl-g cancels (point restored), arrow keys accept and move point |
 | `C-r` | incremental search (backward) - the SAME loop as `C-s` (prompt echo `Reverse find: `): searches backward from point, wrapping at the top, point lands at the match START; typing `C-r`/`C-s` inside the search switches direction |
 | `C-l` | go to line: number typed in the minibuffer, point moves to the start of that line (1-based, clamped to the last line) |
 | `Tab` (in a minibuffer prompt) | complete a file path (file prompts) or a buffer name (`C-x b`, `C-x C-b`); several matches echo the common prefix and list the candidates after the input |

@@ -140,7 +140,32 @@ pub fn point_pos(chars: &[char], point: usize) -> Vec<usize> {
     vec![pline, pcol]
 }
 
-pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> Tree {
+// Paint an OVERLAY span (isearch match / region) onto one line's styles:
+// intersect the CHAR span [lo,hi) with this line's char range
+// [off, off+n) and set the covered style slots to `s`. Out of range =
+// untouched; the caller's toks vector is >= char-count long (.len() is
+// BYTES - an accepted over-allocation for multibyte, the tail is never
+// read by draw_cell).
+pub fn apply_span(st: &mut [Style], off: usize, n: usize, lo: usize, hi: usize, s: Style) {
+    if lo >= hi {
+        return;
+    }
+    let a = lo.max(off);
+    let b = hi.min(off + n);
+    let mut k = a;
+    while k < b {
+        st[k - off] = s;
+        k += 1;
+    }
+}
+
+pub fn draw_all(
+    bufs: &[Buffer],
+    mut tree: Tree,
+    active: usize,
+    msg: String,
+    isearch_hi: Option<(usize, usize, usize)>, // (buffer, match start, match len)
+) -> Tree {
     let size = term_size();
     let tty = size.rows > 0 && size.cols > 0;
     let mut rows = size.rows as usize;
@@ -226,6 +251,29 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
                 view_of(&mut views, bufs, bidx);
                 let buf = &bufs[bidx];
                 let view = views[bidx].as_ref().unwrap();
+                // HIGHLIGHT overlays. The isearch match paints in EVERY
+                // window showing the searching buffer (Emacs paints the
+                // isearch face in all of them; the span is buffer-wide).
+                // The region paints in the ACTIVE leaf only, from the
+                // LEAF's own point AND mark (leaves own both - bufs[.]mark
+                // is the last-SYNCED buffer mark and is one command stale
+                // right after a window switch, painting a ghost region in
+                // the entered window; leaf.mark has no such lag). The
+                // match takes precedence over the region (Emacs suppresses
+                // the region face while isearching).
+                let mut ish: Option<(usize, usize)> = None;
+                let mut reg: Option<(usize, usize)> = None;
+                if let Some((hb, hs, hl)) = isearch_hi {
+                    if hb == bidx {
+                        ish = Some((hs, hs + hl));
+                    }
+                } else if leaf_idx == active {
+                    let pt = tree.leaves[leaf_idx].point;
+                    let mk = tree.leaves[leaf_idx].mark;
+                    if pt != mk {
+                        reg = Some((pt.min(mk), pt.max(mk)));
+                    }
+                }
                 let mut r = 0;
                 while r < height {
                     let li = tree.leaves[leaf_idx].scroll + r;
@@ -240,6 +288,12 @@ pub fn draw_all(bufs: &[Buffer], mut tree: Tree, active: usize, msg: String) -> 
                                 line_styles.push(Style::Plain);
                             }
                             k += 1;
+                        }
+                        let nchar = view.lines[li].chars().count();
+                        if let Some((a, b)) = ish {
+                            apply_span(&mut line_styles, off, nchar, a, b, Style::Isearch);
+                        } else if let Some((a, b)) = reg {
+                            apply_span(&mut line_styles, off, nchar, a, b, Style::Region);
                         }
                         draw_cell(top + r, col, &view.lines[li], width, &line_styles);
                     } else {
@@ -304,6 +358,8 @@ pub fn style_esc(s: Style) -> &'static str {
         Style::Comment => "\x1b[32m",
         Style::Number => "\x1b[34m",
         Style::Marker => "\x1b[1;36m",
+        Style::Isearch => "\x1b[43m", // yellow bg: the live isearch match
+        Style::Region => "\x1b[46m",  // cyan bg: the active mark..point region
         Style::Plain => "\x1b[0m",
     }
 }
@@ -385,6 +441,26 @@ mod tests {
         assert!(char_width('\u{4E00}') == 2); // CJK unified start
         assert!(char_width('\u{33FF}') == 2); // range end of the catch-all
         assert!(char_width('\u{20000}') == 2); // ext. B start
+    }
+    #[test]
+    fn apply_span_intersects_lines() {
+        // ASCII span inside the line
+        let mut st = vec![Style::Plain; 5];
+        apply_span(&mut st, 0, 5, 1, 3, Style::Region);
+        assert!(st == vec![Style::Plain, Style::Region, Style::Region, Style::Plain, Style::Plain]);
+        // span fully BEYOND the line: untouched
+        apply_span(&mut st, 0, 5, 6, 9, Style::Isearch);
+        assert!(st[4] == Style::Plain);
+        // span crossing the line edge: clipped to the line
+        apply_span(&mut st, 0, 5, 3, 9, Style::Isearch);
+        assert!(st == vec![Style::Plain, Style::Region, Style::Region, Style::Isearch, Style::Isearch]);
+        // a LATER line's offset (off > 0): indices are relative to off
+        let mut st2 = vec![Style::Plain; 4];
+        apply_span(&mut st2, 6, 4, 8, 10, Style::Region); // line chars 6..10, span 8..10
+        assert!(st2 == vec![Style::Plain, Style::Plain, Style::Region, Style::Region]);
+        // empty span: untouched
+        apply_span(&mut st2, 6, 4, 7, 7, Style::Region);
+        assert!(st2[2] == Style::Region);
     }
     #[test]
     fn point_pos_cells() {

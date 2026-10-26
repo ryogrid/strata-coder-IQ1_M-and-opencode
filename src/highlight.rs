@@ -16,6 +16,8 @@ pub enum Style {
     Comment, // 3: green
     Number,  // 4: blue
     Marker,  // 5: bold cyan (markdown headings/list markers, HTML tags)
+    Isearch, // 6: yellow bg (the live isearch match; C-s/C-r)
+    Region,  // 7: cyan bg (the active region between mark and point)
 }
 
 pub fn hchars_of(s: &str) -> Vec<char> {
