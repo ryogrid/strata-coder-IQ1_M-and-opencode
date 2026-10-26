@@ -307,7 +307,8 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
-- 2026-10-26: M-w(kill-ring-save)実装=region(mark↔point 間)を kill ring へ
+- 2026-10-26: M-w(kill-ring-save)実装=コミット bf176a7(CI 緑 run 40318362435)。
+  region(mark↔point 間)を kill ring へ
   **copy**(cut 無し・undo entry 無し)。`Cmd::CopyRegion`+meta 0x77、
   `Buffer::slice_text`(gap 読み取り専用、unit 追加)。C-w と同じ lo/hi 規約、
   空 region は完全無言(msg/killed 不変=pin 済)。M-w は region を **deactivate**
