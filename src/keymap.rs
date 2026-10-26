@@ -24,13 +24,14 @@ pub enum Cmd {
     SetMark,      // C-SPC
     BeginningOfLine, EndOfLine, BackwardChar, ForwardChar,
     NextLine, PreviousLine, BeginningOfBuffer, EndOfBuffer,
+    ScrollPageDown, ScrollPageUp, // C-v / M-v: one screenful (point moves; the scroll follows)
     BackwardWord, ForwardWord,
     DeleteBackward, DeleteForward, OpenLine, TransposeChars,
-    KillLine, Yank,
+    KillLine, KillRegion, Yank,  // C-k / C-w / C-y
     Undo,         // C-/ (arrives as 0x1f = US, the C-_ code; T-9)
     GotoLine,     // C-l (minibuffer line number)
     Isearch,      // C-s: the incremental-search loop (one method)
-    FindBackward, // C-r (minibuffer query)
+    FindBackward, // C-r: THE SAME loop, backward direction (incremental)
     FindFile, Save, WriteFile, InsertFile, KillBuffer,
     SwitchBuffer(bool), // true = Ctrl-x Ctrl-b (list prompt + Enter cycles)
     DeleteOtherWindows, SplitBelow, SplitRight, OtherWindow,
@@ -52,6 +53,8 @@ pub fn plain_key(b: u8) -> Cmd {
         0x1b => Cmd::PrefixMeta,
         0x13 => Cmd::Isearch,
         0x12 => Cmd::FindBackward,
+        0x16 => Cmd::ScrollPageDown, // C-v (Emacs: scroll-page)
+        0x17 => Cmd::KillRegion,     // C-w (Emacs: kill-region; C-x C-w is a DIFFERENT byte pair)
         0x07 => Cmd::Cancel,
         0x00 => Cmd::SetMark,
         0x01 => Cmd::BeginningOfLine,
@@ -102,6 +105,7 @@ pub fn meta_key(n: u8) -> Cmd {
         0x66 => Cmd::ForwardWord,
         0x3c => Cmd::BeginningOfBuffer, // C-</C-> arrive as Meta forms
         0x3e => Cmd::EndOfBuffer,
+        0x76 => Cmd::ScrollPageUp, // M-v (Emacs: scroll-page-up)
         _ => Cmd::MetaUnbound,
     }
 }
@@ -130,6 +134,8 @@ mod tests {
         assert!(plain_key(0x02) == Cmd::BackwardChar);
         assert!(plain_key(0x7f) == Cmd::DeleteBackward); // DEL, NOT insert
         assert!(plain_key(0x0b) == Cmd::KillLine);
+        assert!(plain_key(0x16) == Cmd::ScrollPageDown); // C-v
+        assert!(plain_key(0x17) == Cmd::KillRegion); // C-w (plain; C-x C-w is ctrl_x 0x17)
         assert!(plain_key(0x0a) == Cmd::Newline && plain_key(0x0d) == Cmd::Newline);
         assert!(plain_key(0x1f) == Cmd::Undo); // T-9: C-/ (US byte, the C-_ code)
         assert!(plain_key(0x08) == Cmd::Noop); // unbound control: silent
@@ -156,6 +162,7 @@ mod tests {
         assert!(meta_key(0x5b) == Cmd::PrefixArrow); // 3-byte read via main
         assert!(meta_key(0x62) == Cmd::BackwardWord);
         assert!(meta_key(0x3c) == Cmd::BeginningOfBuffer);
+        assert!(meta_key(0x76) == Cmd::ScrollPageUp); // M-v
         assert!(meta_key(0x7a) == Cmd::MetaUnbound); // SILENT
         assert!(arrow_key(0x41) == Cmd::Arrow(0));
         assert!(arrow_key(0x44) == Cmd::Arrow(3));

@@ -1275,11 +1275,67 @@ t_s155() {  # C-x 1 then C-x C-f: the lone window splits below, file in the NEW 
   report s155 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154 t_s155 t_s156 t_s157 t_s158 t_s159 t_s160 t_s161; do
+t_s162() {  # C-v / M-v: page = rows-2 lines, column kept, clamps at buffer bounds
+  printf 'L%02d\n' {1..60} > /tmp/emur-e2e-page.txt
+  start_session s162 /tmp/emur-e2e-page.txt
+  local ok=1
+  # 80x24 pane: window is rows-1 = 23 lines; one page = rows-2 = 22 lines.
+  # Point starts at (0,0): C-v lands on line index 22 (0-based, col 0 kept).
+  expect_lastline 'Buf /tmp/emur-e2e-page.txt 1/61 (0%)' || ok=0
+  sendb $'\026'        # C-v: down 22 lines -> point 88/240 = 36%
+  expect_lastline 'Buf /tmp/emur-e2e-page.txt 23/61 (36%)' || ok=0
+  sendb $'\033v'       # M-v: back 22 lines -> line 1
+  expect_lastline 'Buf /tmp/emur-e2e-page.txt 1/61 (0%)' || ok=0
+  sendb $'\033v'       # M-v at the top: CLAMPED (stays, silent)
+  expect_lastline 'Buf /tmp/emur-e2e-page.txt 1/61 (0%)' || ok=0
+  sendb $'\033\076'    # M->: end of buffer
+  expect_lastline 'Buf /tmp/emur-e2e-page.txt 61/61 (100%)' || ok=0
+  sendb $'\026'        # C-v at the end: CLAMPED (stays, silent)
+  expect_lastline 'Buf /tmp/emur-e2e-page.txt 61/61 (100%)' || ok=0
+  report s162 "$ok"
+}
+
+t_s163() {  # C-w kill-region: cut [mark..point], point/mark at region start; empty = silent
+  printf 'alpha beta\n' > /tmp/emur-e2e-killw.txt
+  start_session s163 /tmp/emur-e2e-killw.txt
+  local ok=1
+  tmux send-keys -t "$SESSION" C-@; sleep "$STEP"   # mark at point 0
+  sendb $'\006\006\006\006\006'                     # C-f x5: point 5, region 'alpha'
+  sendb $'\027'                                     # C-w: cut 'alpha', point/mark -> 0
+  sendb $'\027'                                     # EMPTY region (mark==point): SILENT no-op
+  sendb $'\006'                                     # C-f: cursor OFF the leading space (a cell under the cursor is stripped from the capture)
+  expect '^ beta$' || ok=0
+  expect_lastline 'Buf /tmp/emur-e2e-killw.txt * 1/2 (16%)' || ok=0
+  sendb $'\001'                                     # C-a: point 0
+  expect_lastline 'Buf /tmp/emur-e2e-killw.txt * 1/2 (0%)' || ok=0
+  sendb $'\031'                                     # C-y: yank 'alpha' back at point 0
+  expect '^alpha beta$' || ok=0
+  expect_lastline 'Buf /tmp/emur-e2e-killw.txt * 1/2 (45%)' || ok=0
+  report s163 "$ok"
+}
+
+t_s164() {  # C-r incremental: hops during typing (prompt row live, NO Enter); C-s switches
+  start_session s164
+  local ok=1
+  sendb $'\033>'                                    # M->: end of buffer (cursor row 2 = 0-based)
+  [ "$(tmux display-message -p -t "$SESSION" '#{cursor_y}:#{cursor_x}')" = "2:0" ] || ok=0
+  sendb $'\022b'                                    # C-r + 'b': point hops BACK to the 'b' of 'buffer.'
+  expect 'Reverse find: b' || ok=0                  # query echoes live on the prompt row
+  sendb 'uf'                                        # 'buf': the same single hit (wraps once)
+  expect 'Reverse find: buf' || ok=0
+  sendb $'\023'                                     # C-s INSIDE the search: switch FORWARD, re-search 'buf'
+  expect 'Search: buf' || ok=0
+  enter                                             # accept (search does NOT modify the buffer)
+  expect_lastline 'Buf *demo* 2/3 (88%)' || ok=0    # point = the FORWARD match END from the switch
+  [ "$(tmux display-message -p -t "$SESSION" '#{cursor_y}:#{cursor_x}')" = "1:15" ] || ok=0
+  report s164 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154 t_s155 t_s156 t_s157 t_s158 t_s159 t_s160 t_s161 t_s162 t_s163 t_s164; do
   "$t"
 done
 
-rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt /tmp/emur-e2e-pipe-s140.out /tmp/emur-e2e-pipe-s142.out /tmp/emur-e2e-s155.txt /tmp/emur-e2e-undo.txt
+rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt /tmp/emur-e2e-pipe-s140.out /tmp/emur-e2e-pipe-s142.out /tmp/emur-e2e-s155.txt /tmp/emur-e2e-undo.txt /tmp/emur-e2e-page.txt /tmp/emur-e2e-killw.txt
 rm -rf /tmp/emur-e8; rm -f "$HOME/emur-t8-marker.txt"
 
 if [ "$FAILED" = 0 ]; then

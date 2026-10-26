@@ -4,7 +4,7 @@
 
 `emur` is a terminal editor driven one byte at a time through the tty
 (`src/terminal.rs`, `src/keymap.rs` since fix #27). Its e2e suite
-(`test-design/e2e.sh`, 89 scenarios) covers known key paths, but nobody
+(`test-design/e2e.sh`, 93 scenarios) covers known key paths, but nobody
 has tested *arbitrary* byte sequences for crashes, buffer corruption,
 and display breakage. This project adds property-based testing (PBT)
 with `proptest`:

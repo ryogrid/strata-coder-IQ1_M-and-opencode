@@ -31,10 +31,13 @@ Ops (each = one FULL keybinding, weighted):
 | 1 | `C-x C-i` + seedpath + Enter | insert_file (+undo entry) |
 | 2 | `C-x k` + yes + Enter \| no + Enter (only MODIFIED buffers prompt) | kill_buffer incl. alias reset |
 | 2 | `C-l` + digits + Enter (in-range, 0, past-end, non-digit, empty) | goto_line msgs |
-| 1 | `C-r` + q + Enter (found / absent) | find_backward |
-| 1 | `C-s` + q + Enter \| `C-s` + q + C-g | isearch machine |
+| 1 | `C-r` + q + Enter (found / absent) | the SAME unified isearch mirror, `backward=true` (the old read_line / "Search string not found" op path is GONE - C-r consumes the tail bytes directly) |
+| 1 | `C-s` + q + Enter \| `C-s` + q + C-g | isearch machine (`backward=false`) |
+| 2 | `C-v` | page down: next_line x (rows-2), column kept, clamp; SILENT, no entry |
+| 2 | `M-v` | page up: previous_line x (rows-2) |
+| 2 | `C-w` | kill-region (region only when `C-@` set a mark; empty region = SILENT no-op); killed accumulation on C-w runs (tag 2 group) |
 | 2 | `C-x` + C-g; ESC + C-g | prefix-abort msg / silent |
-| 2 | plain `C-g` (0x07) | `Cmd::Cancel`: msg `Cancelled` (main.rs:832) - the canonical msg-precedence producer on the status row |
+| 2 | plain `C-g` (0x07) | `Cmd::Cancel`: msg `Cancelled` (main.rs:922) - the canonical msg-precedence producer on the status row |
 | 1 | `C-q` + printable | quote_insert (tag 1) |
 
 Burst: 1..14 ops. Checkpoints: after ops {2, 6, 10} (as available) +

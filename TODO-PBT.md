@@ -155,6 +155,14 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 学習記録
 
+- 2026-10-26(C-v/M-v/C-w+isearch 統一):tmux capture-pane は**カーソル下の
+  blank をキャプチャから落とす**ため、leading space を含む行アサーションは
+  カーソルを退避させてから capture する。`expect_lastline` は完全一致で
+  正規表現ではない(`\(` を渡すと静かに全滅する)。プレフィックス map
+  (meta/C-x)生成のコマンドは**そのプレフィックス dispatch 側の match に
+  arm が要る**plain match だけでは `_ => {}` に呑まれて無言。exhaustiveness
+  チェックはこの取りこぼしを検出しない。isearch の EOF はミニバッファ EOF
+  法(Cancelled)と揃えるのが一貫(既存 e2e ピンがそれを要求していた)。
 - 2026-10-26(P3 flake/PBTF-008):定性的プロパティの断言は**設計の不変
   条件**であって**seed の文字列リテラル**であってはならない。分割ツリー
   のエイリアス leaf は point 独立(window.rs:151-156)なので、split 時
@@ -284,6 +292,22 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
+- 2026-10-26: C-v/M-v/C-w 実装+C-s/C-r 統一増分 isearch ループ(プロダクト
+  keymap.rs/buffer.rs/main.rs+README 実態化)と P5 combination ミラー追従
+  (模型 isearch(tail, backward)+search_step、Rf op は C-r 直 tail 経路へ
+  変更=read_line/apply_rf/prompt_run Rf 分支削除、新 op Cv/Mv/Cw=pool
+  weight 2)、e2e に s162(page)/s163(kill-region)/s164(C-r 増分+C-s 方向
+  切替)追加=93 シナリオ。実装で拾った落とし穴 2 件=
+  ①ScrollPageUp は meta_key 生成なので PrefixMeta match に arm が要る
+  (plain match だけだと `_ => {}` に呑まれ無言。s162 が検出)、
+  ②isearch の EOF は mini バッファ EOF 法(Cancelled)に統一(s142 既存ピン
+  が緑のまま通る)。キャプチャの罠=カーソル下 blank は tmux capture から
+  消える(s163 は C-f で退避)。`expect_lastline` は完全一致で正規表現では
+  ない(s163/164 初版の `\(` エスケープが全滅)。
+  検証:unit 53 緑、combination P5/P6/P7/P7b 全緑(全直列)、
+  e2e 93/93 緑、コードゲート PASS・Minor 4 件全織り込み(README の
+  `Search string not found` 例を現存 msg へ、01-overview 93、
+  02-model の C-w 区間式と isearch 行指標、03-properties C-g 行指標)。
 - 2026-10-26: P3 CI flake 対応=コミット aa5995e:CI run 40243973196(df47fbe)
   の p3_window_walk 失敗をトリアージ=**プロダクト正常・テスト側過強断言**
   (PBTF-008 登記)。断言を `pane.contains("alpha")` →

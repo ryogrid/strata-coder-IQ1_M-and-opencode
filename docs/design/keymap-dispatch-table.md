@@ -44,8 +44,10 @@ review 当時の計測で「約 300 行」)は 1 関の平坦な if-else 連鎖�
 | 素 | 0x03 | Quit(confirm_exit で yes と break) | 取消時 msg=Cancelled、素 map に 0x03 arm 無し=no-op 着地 |
 | 素 | 0x18 | →C-x map | |
 | 素 | 0x1b | →Meta map | |
-| 素 | 0x13 | isearch-forward(専用ループ) | msg=Cancelled/空 |
-| 素 | 0x12 | C-r find-backward(read_line) | msg  various |
+| 素 | 0x13 | isearch(順方向、専用ループ) | msg=Cancelled/空 |
+| 素 | 0x12 | isearch(逆方向)= C-r。0x13 と同一ループの `backward=true`。read_line は廃止 | msg=Cancelled/空(未実行時の "Search string not found" は消えた) |
+| 素 | 0x16 | scroll-page-down(C-v): 次 line を rows-2 回(列維持、境界で clamp) | 無言・undo entry なし |
+| 素 | 0x17 | kill-region(C-w): mark↔point 間を cut(point/mark は region 先頭へ)。region 空は何もしない | killed 蓄積(prev_cmd==0x17 の連続 run)。空 region は無言(entry 也無) |
 | 素 | 0x07 | cancel | msg=Cancelled |
 | 素 | 0x00 | set-mark | msg=空 |
 | 素 | 0x01/0x02/0x06/0x0e/0x10/0x7f/0x04/0x0f/0x14/0x0b/0x19/0x05 | beginning-of-line / backward-char / forward-char / next-line / previous-line / delete-backward / delete-forward / open-line / transpose-chars / kill-line / yank / end-of-line | kill は killed 蓄積(prev_cmd==0x0b) |
@@ -68,6 +70,7 @@ review 当時の計測で「約 300 行」)は 1 関の平坦な if-else 連鎖�
 | Meta | 0x5b+t | 矢印 A/B/C/D(前後行/文字) | |
 | Meta | 0x62/0x66 | backward/forward-word | |
 | Meta | 0x3c/0x3e | beginning/end-of-buffer | |
+| Meta | 0x76 | scroll-page-up(M-v): 前 line を rows-2 回 | 無言・undo entry なし |
 | Meta | その他 | **無言 no-op**(現状維持) | |
 
 ## 3. 設計
@@ -83,11 +86,12 @@ pub enum Cmd {
     Cancel, SetMark,
     BeginningOfLine, EndOfLine, BackwardChar, ForwardChar,
     NextLine, PreviousLine, BeginningOfBuffer, EndOfBuffer,
+    ScrollPageDown, ScrollPageUp,     // C-v(0x16)/ M-v(0x76): screenful 移動
     BackwardWord, ForwardWord,
     DeleteBackward, DeleteForward, OpenLine, TransposeChars,
-    KillLine, Yank, Undo,             // T-9: Undo=C-/(0x1f)。実在の分だけ(KillRegion は未バインド=置かない)
-    GotoLine, Isearch,                // C-s は専用ループ(1 メソッドに丸ごと)
-    FindBackward,
+    KillLine, KillRegion, Yank,       // T-9: Undo=C-/(0x1f)。C-w=KillRegion(0x17 素)
+    GotoLine, Isearch,                // C-s/C-r は 1 つの isearch(backward) ループ
+    FindBackward,                     // 0x12: 同一ループの backward 方向(arm は isearch(true))
     FindFile, Save, WriteFile, InsertFile, KillBuffer, SwitchBuffer(bool), // 0x02=list形式
     DeleteOtherWindows, SplitBelow, SplitRight, OtherWindow,
     Arrow(usize),           // main が 0x5b の後の t を read して 0=U,1=D,2=R,3=L

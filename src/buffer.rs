@@ -122,6 +122,32 @@ impl Buffer {
         true
     }
 
+    // C-w (Emacs kill-region): cut the text between mark and point.
+    // Returns the cut string; point AND mark land at the region start.
+    // An empty region (mark == point) cuts NOTHING (returns "").
+    pub fn kill_region(&mut self) -> String {
+        let lo = self.point.min(self.mark);
+        let hi = self.point.max(self.mark).min(self.len()); // DEFENSIVE clamp
+        if lo >= hi {
+            return String::new();
+        }
+        self.move_gap(lo);
+        // The gap window sits at lo; the logical chars [lo..hi) are the
+        // physical chars right AFTER the gap - collect, then consume
+        // them into the gap (the delete_forward mechanism, span-wide).
+        let mut cut = String::new();
+        let mut k = self.gap_end;
+        while k < self.gap_end + (hi - lo) {
+            cut.push(self.chars[k]);
+            k += 1;
+        }
+        self.gap_end += hi - lo;
+        self.point = lo;
+        self.mark = lo;
+        self.modified = true;
+        cut
+    }
+
     pub fn char_at(&self, pos: usize) -> char {
         self.chars[self.to_index(pos)]
     }
@@ -480,6 +506,33 @@ fn gap_refill_amortized() {
     assert!(b.len() == 5 + GAP + 3);
     assert!(b.text().starts_with("abc") && b.text().ends_with("hello"));
 }
+#[test]
+fn kill_region_matrix() {
+    // C-w: region cut; point/mark land at the region start (lo);
+    // empty region cuts nothing.
+    let mut b = Buffer::new("t", "hello world");
+    b.point = 5;
+    b.mark = 0; // mark BEHIND point
+    assert!(b.kill_region() == "hello");
+    assert!(b.text() == " world");
+    assert!(b.point == 0 && b.mark == 0);
+    let mut c = Buffer::new("t", "hello world");
+    c.point = 0;
+    c.mark = 5; // mark AHEAD of point: same region, same result
+    assert!(c.kill_region() == "hello");
+    assert!(c.text() == " world" && c.point == 0 && c.mark == 0);
+    let mut d = Buffer::new("t", "abc");
+    d.point = 2;
+    d.mark = 2;
+    assert!(d.kill_region().is_empty()); // empty region: NO cut, NO mark move
+    assert!(d.text() == "abc" && d.point == 2 && d.mark == 2);
+    let mut e = Buffer::new("t", "line one\nline two\n");
+    e.point = 17;
+    e.mark = 9; // across the newline
+    assert!(e.kill_region() == "line two");
+    assert!(e.text() == "line one\n\n" && e.point == 9 && e.mark == 9);
+}
+
 #[test]
 fn c_o_fresh_and_refill_boundary() {
     // F-4: the old Vec::insert branch of insert_newline_after lacked

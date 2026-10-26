@@ -425,113 +425,201 @@ impl Ed {
         }
     }
 
-    fn isearch(&mut self) {
+    fn isearch(&mut self, mut backward: bool) {
     let bi = self.bi();
-        // Type the query one char at a time; each char extends the search
-    // (wrapping at the buffer end) and moves point to the match end.
-    // A char that matches nowhere rings the bell and is ignored.
-    // C-s while searching repeats the current query. Enter accepts the
-    // current match; Ctrl-g cancels (point restored); ESC also ends.
-    let orig = self.bufs[bi].point;
-    let mut qs: Vec<char> = vec![];
-    let mut last = orig; // start position of the current match
-    let szs = screen::term_size();
-    let prow = if szs.rows > 0 { szs.rows } else { 24 };
-    terminal::emit(format!("\x1b[{};1H\x1b[2KSearch: ", prow));
-    let mut cancelled = false;
-    loop {
-        let rb2 = terminal::read_byte_eof();
-        if rb2[1] == 1 { break; } // EOF: keep the current match
-        let c2 = rb2[0];
-        if c2 == 0x0D || c2 == 0x0A { break; } // accept
-        if c2 == 0x1b {
-            // M-3: ESC accepts the search. Arrow keys arrive as
-            // ESC [ <ABCD>; swallow the whole sequence here, else
-            // the trailing "[B" etc. self-insert into the buffer.
-            // The arrow then acts as a plain arrow key (Emacs
-            // isearch: arrows accept and move).
-            let n2 = terminal::read_byte();
-            if n2 == 0x5b {
-                let t = terminal::read_byte();
-                if t == 0x41 {
-                    self.bufs[bi].previous_line(); // Up
-                } else if t == 0x42 {
-                    self.bufs[bi].next_line(); // Down
-                } else if t == 0x43 {
-                    self.bufs[bi].forward_char(); // Right
-                } else if t == 0x44 {
-                    self.bufs[bi].backward_char(); // Left
-                }
+        // C-s / C-r: ONE incremental search loop - forward (C-s) or
+        // backward (C-r): the Emacs isearch model (README "Incremental
+        // search"). Every typed char extends the query and moves point
+        // to the match IN THE CURRENT DIRECTION (wrapping ONCE at the
+        // buffer edge). Typing C-s / C-r INSIDE the search SWITCHES the
+        // direction (Emacs C-s <-> C-r) and re-searches the current
+        // query. After EVERY step the leaf point is synced, the frame
+        // repainted and the prompt row re-emitted: the match scrolls
+        // into view AS YOU TYPE - no Enter needed. A char that matches
+        // nowhere rings the bell and is DROPPED. Enter accepts the
+        // current match; Ctrl-g cancels (point restored to the entry
+        // value); ESC accepts and swallows one arrow (M-3); DEL pops
+        // one query char and re-searches (forward from the FRONT,
+        // backward from the BACK - the two ends mirror each other).
+        // A forward hit puts point at the match END; a backward hit
+        // puts it at the match START (the side the search came from).
+        let orig = self.bufs[bi].point;
+        let mut qs: Vec<char> = vec![];
+        let mut last = orig; // start position of the current match
+        let szs = screen::term_size();
+        let prow = if szs.rows > 0 { szs.rows as usize } else { 24 };
+        self.search_echo(prow, backward, &qs);
+        let mut cancelled = false;
+        loop {
+            let rb2 = terminal::read_byte_eof();
+            if rb2[1] == 1 {
+                cancelled = true; // EOF cancels the command (minibuffer law)
+                break;
             }
-            break;
-        }
-        if c2 == 0x07 { cancelled = true; break; } // Ctrl-g: cancel
-        if c2 == 0x7f { // backspace: drop the last query char
-            if !qs.is_empty() { qs.pop(); }
-            if !qs.is_empty() {
-                let q2 = terminal::str_of(&qs);
-                let hit = self.bufs[bi].find_forward(&q2, 0);
-                if let Some(end) = hit {
-                    self.bufs[bi].point = end;
-                    last = end - qs.len();
+            let c2 = rb2[0];
+            if c2 == 0x0D || c2 == 0x0A { break; } // accept
+            if c2 == 0x1b {
+                // M-3: ESC accepts the search. Arrow keys arrive as
+                // ESC [ <ABCD>; swallow the whole sequence here, else
+                // the trailing "[B" etc. self-insert into the buffer.
+                // The arrow then acts as a plain arrow key (Emacs
+                // isearch: arrows accept and move).
+                let n2 = terminal::read_byte();
+                if n2 == 0x5b {
+                    let t = terminal::read_byte();
+                    if t == 0x41 {
+                        self.bufs[bi].previous_line(); // Up
+                    } else if t == 0x42 {
+                        self.bufs[bi].next_line(); // Down
+                    } else if t == 0x43 {
+                        self.bufs[bi].forward_char(); // Right
+                    } else if t == 0x44 {
+                        self.bufs[bi].backward_char(); // Left
+                    }
                 }
+                break;
             }
-            continue;
-        }
-        let mut attempt: Vec<char> = vec![]; // query to search for
-        let from = last + 1;
-        let mut echo_ch = ' '.to_string(); // char to echo on the search line
-        if c2 == 0x13 { // Ctrl-s while searching: repeat the query
-            if qs.is_empty() { continue; } // still waiting for chars
-            attempt = qs.clone();
-        } else { // a printable char extends the query
+            if c2 == 0x07 { cancelled = true; break; } // Ctrl-g: cancel
+            if c2 == 0x7f { // backspace: drop the last query char
+                if !qs.is_empty() { qs.pop(); }
+                if !qs.is_empty() {
+                    let q2 = terminal::str_of(&qs);
+                    let qlen = qs.len();
+                    // Re-search the popped query from the buffer end
+                    // that MATCHES THE DIRECTION (forward: first hit,
+                    // backward: last hit).
+                    let hit = if backward {
+                        let l = self.bufs[bi].len();
+                        self.bufs[bi].find_backward(&q2, l + 1)
+                    } else {
+                        self.bufs[bi].find_forward(&q2, 0)
+                    };
+                    if let Some(p) = hit { self.search_match(bi, backward, p, qlen, &mut last); }
+                }
+                self.search_progress(prow, backward, &qs);
+                continue;
+            }
+            if c2 == 0x13 || c2 == 0x12 {
+                // Emacs isearch direction switch: C-s continues FORWARD,
+                // C-r continues BACKWARD, re-searching the CURRENT query
+                // from the current match position. The switch key
+                // echoes nothing beyond the prompt row repaint.
+                backward = c2 == 0x12;
+                if !qs.is_empty() {
+                    let q2 = terminal::str_of(&qs);
+                    let qlen = qs.len();
+                    let hit = self.search_step(bi, &q2, backward, last);
+                    if let Some(p) = hit { self.search_match(bi, backward, p, qlen, &mut last); }
+                }
+                self.search_progress(prow, backward, &qs);
+                continue;
+            }
             let cc = match terminal::read_char_eof(c2) {
                 Some(c) => c,
-                None => break, // EOF: keep the current match
+                None => {
+                    cancelled = true; // EOF cancels (minibuffer law)
+                    break;
+                }
             };
-            attempt = qs.clone();
+            let mut attempt: Vec<char> = qs.clone();
             attempt.push(cc);
-            echo_ch = cc.to_string();
-        }
-        let q2 = terminal::str_of(&attempt);
-        let hit = self.bufs[bi]
-            .find_forward(&q2, from)
-            .or_else(|| self.bufs[bi].find_forward(&q2, 0)); // wrap once
-        if let Some(end) = hit {
-            qs = attempt;
-            self.bufs[bi].point = end;
-            last = end - qs.len();
-            if c2 != 0x13 {
-                terminal::emit(echo_ch.clone()); // echo the query char
+            let q2 = terminal::str_of(&attempt);
+            let hit = self.search_step(bi, &q2, backward, last);
+            if let Some(p) = hit {
+                qs = attempt;
+                let qlen = qs.len();
+                self.search_match(bi, backward, p, qlen, &mut last);
+                self.search_progress(prow, backward, &qs);
+            } else {
+                terminal::emit("\x07".to_string()); // bell: char ignored
             }
-            // (C-s repeats print nothing: the old trailing flush
-            // was an empty-buffer no-op)
-        } else {
-            terminal::emit("\x07".to_string()); // bell: char ignored
         }
-    }
-    if cancelled {
-        self.bufs[bi].point = orig;
-        self.msg = "Cancelled".to_string();
-    } else {
-        self.msg = "".to_string();
-    }
+        if cancelled {
+            self.bufs[bi].point = orig;
+            self.msg = "Cancelled".to_string();
+        } else {
+            self.msg = "".to_string();
+        }
     }
 
-    fn find_backward(&mut self) {
-    let bi = self.bi();
-        let q = terminal::read_line("Reverse find: ");
-    if !q.is_empty() {
-        let hit = self.bufs[bi].find_backward(&q, self.bufs[bi].point);
-        if let Some(start) = hit {
-            self.bufs[bi].point = start;
-            self.msg = "".to_string();
+    // One search hop: forward = find_forward(q, last+1) then wrap to 0;
+    // backward = find_backward(q, last) - strictly before the current
+    // match start - then wrap to the buffer tail.
+    fn search_step(&self, bi: usize, q: &str, backward: bool, last: usize) -> Option<usize> {
+        if backward {
+            let l = self.bufs[bi].len();
+            self.bufs[bi].find_backward(q, last).or_else(|| self.bufs[bi].find_backward(q, l + 1))
         } else {
-            self.msg = format!("Search string not found: {}", q);
+            self.bufs[bi].find_forward(q, last + 1).or_else(|| self.bufs[bi].find_forward(q, 0))
         }
-    } else {
-        self.msg = "Cancelled".to_string();
     }
+
+    // Land a hop's hit. find_forward returns the match END,
+    // find_backward the match START: point lands on the side the
+    // search came from (Emacs). `last` tracks the match START in BOTH
+    // directions (the next hop searches strictly after / before it).
+    fn search_match(&mut self, bi: usize, backward: bool, pos: usize, qlen: usize, last: &mut usize) {
+        self.bufs[bi].point = pos;
+        *last = if backward { pos } else { pos - qlen };
+    }
+
+    // Progressive display: sync the leaf point to the moving match,
+    // repaint the frame (the window scroll follows the point: S-6
+    // recomputes scroll every frame), then re-emit the prompt row.
+    // A bell-step (miss) never calls this: point and screen stay put.
+    fn search_progress(&mut self, prow: usize, backward: bool, qs: &[char]) {
+        self.sync_out();
+        self.frame();
+        self.search_echo(prow, backward, qs);
+    }
+
+    fn search_echo(&self, prow: usize, backward: bool, qs: &[char]) {
+        let prompt = if backward { "Reverse find: " } else { "Search: " };
+        terminal::emit(format!("\x1b[{};1H\x1b[2K{}{}", prow, prompt, terminal::str_of(qs)));
+    }
+
+    fn page_down(&mut self) { self.page(true); }
+    fn page_up(&mut self) { self.page(false); }
+
+    fn page(&mut self, down: bool) {
+    // C-v / M-v (Emacs scroll-page): move point ONE screenful =
+    // terminal rows - 2 lines (the window is rows-1 tall, Emacs keeps
+    // 1 line of overlap for continuity). The scroll follows the point
+    // every frame (S-6); the column is preserved (the
+    // next_line/previous_line rule). SILENT: no msg, no undo entry.
+        let sz = screen::term_size();
+        let step = if sz.rows > 3 { (sz.rows - 2) as usize } else { 1 };
+        let bi = self.bi();
+        let mut k = 0;
+        while k < step {
+            if down {
+                self.bufs[bi].next_line();
+            } else {
+                self.bufs[bi].previous_line();
+            }
+            k += 1;
+        }
+    }
+
+    fn kill_region(&mut self) {
+    let bi = self.bi();
+        // C-w (Emacs kill-region): cut the region between mark and
+        // point; point AND mark land at the region start. Consecutive
+        // C-w runs accumulate into the killed string (the C-k run rule,
+        // prev_cmd == 0x17). An EMPTY region is SILENT: no cut, no
+        // kill touch, no undo entry (Emacs signals; emur stays quiet).
+        let pre = self.bufs[bi].snapshot();
+        let cut = self.bufs[bi].kill_region();
+        if self.bufs[bi].text() != pre.text {
+            self.push_entry(bi, 2, pre); // T-9: kill group (tag 2)
+        }
+        if !cut.is_empty() {
+            if self.prev_cmd == 0x17 {
+                self.killed.push_str(&cut);
+            } else {
+                self.killed = cut;
+            }
+        }
     }
 
     fn backward_word(&mut self) {
@@ -824,11 +912,13 @@ fn main() {
                     Cmd::ForwardWord => ed.forward_word(),
                     Cmd::BeginningOfBuffer => ed.beginning_of_buffer(),
                     Cmd::EndOfBuffer => ed.end_of_buffer(),
+                    Cmd::ScrollPageUp => ed.page_up(), // M-v (0x76)
                     _ => {} // MetaUnbound: silent
                 }
             }
-            Cmd::Isearch => ed.isearch(),
-            Cmd::FindBackward => ed.find_backward(),
+            Cmd::Isearch => ed.isearch(false),
+            Cmd::FindBackward => ed.isearch(true),
+            Cmd::ScrollPageDown => ed.page_down(),
             Cmd::Cancel => ed.msg = "Cancelled".to_string(),
             Cmd::Noop => {} // unbound plain byte: SILENT (Doc D §2.3)
             Cmd::SetMark => ed.set_mark(),
@@ -842,6 +932,7 @@ fn main() {
             Cmd::OpenLine => ed.open_line(),
             Cmd::TransposeChars => ed.transpose_chars(),
             Cmd::KillLine => ed.kill_line(),
+            Cmd::KillRegion => ed.kill_region(),
             Cmd::Yank => ed.yank(),
             Cmd::Undo => ed.undo(), // T-9: C-/ (0x1f)
             Cmd::EndOfLine => ed.end_of_line(),
@@ -854,6 +945,7 @@ fn main() {
             Cmd::Arrow(_) => {}
             Cmd::Unbound(..) => {}
             Cmd::MetaUnbound => {}
+            Cmd::ScrollPageUp => {} // M-v: produced by meta_key only
             Cmd::BeginningOfBuffer | Cmd::EndOfBuffer => {}
             Cmd::BackwardWord | Cmd::ForwardWord => {}
             Cmd::FindFile | Cmd::Save => {}

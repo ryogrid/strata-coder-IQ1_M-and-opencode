@@ -505,6 +505,9 @@ enum Op {
     Cp,
     Co,
     Ct,
+    Cv, // C-v: page down (rows-2 lines, column kept)
+    Mv, // M-v: page up
+    Cw, // C-w: kill-region (region only when Cspc set the mark; else silent)
     Cspc,
     Mb,
     Mf,
@@ -721,6 +724,9 @@ impl M {
             Op::Cn => 0x0e,
             Op::Cp => 0x10,
             Op::Co => 0x0f,
+            Op::Cv => 0x16,
+            Op::Cw => 0x17,
+            Op::Mv => 0x1b,
             Op::Ct => 0x14,
             Op::Cspc => 0x00,
             Op::Mb | Op::Mf | Op::Mlt | Op::Mgt | Op::Arr(_) | Op::MetaG => 0x1b,
@@ -811,6 +817,38 @@ impl M {
                 m.bufs[b].transpose_chars();
                 true
             }),
+            Op::Cv | Op::Mv => {
+                // page (main.rs): rows - 2 lines, column preserved
+                // (next_line/previous_line); the scroll follows the
+                // point every frame (S-6). SILENT: no msg, no entry.
+                let down = matches!(op, Op::Cv);
+                let step = if self.h > 3 { self.h - 2 } else { 1 };
+                for _ in 0..step {
+                    if down {
+                        self.bufs[bi].next_line();
+                    } else {
+                        self.bufs[bi].previous_line();
+                    }
+                }
+            }
+            Op::Cw => {
+                // kill_region cmd (main.rs): cut the region, tag 2
+                // kill group; killed accumulates on a C-w run
+                // (prev == 0x17); empty region: SILENT (no cut, no
+                // kill touch, no entry)
+                let pre = self.bufs[bi].snapshot();
+                let cut = self.bufs[bi].kill_region();
+                if self.bufs[bi].text() != pre.text {
+                    self.push_entry(bi, 2, pre);
+                }
+                if !cut.is_empty() {
+                    if self.prev == 0x17 {
+                        self.killed.push_str(&cut);
+                    } else {
+                        self.killed = cut;
+                    }
+                }
+            }
             Op::Cspc => {
                 let p = self.bufs[bi].point;
                 self.bufs[bi].mark = p;
@@ -1124,22 +1162,6 @@ impl M {
         }
     }
 
-    fn apply_rf(&mut self, sel: &str) {
-        // find_backward (main.rs:521-535)
-        if sel.is_empty() {
-            self.msg = "Cancelled".to_string();
-            return;
-        }
-        let bi = self.bi();
-        match self.bufs[bi].find_backward(sel, self.bufs[bi].point) {
-            Some(start) => {
-                self.bufs[bi].point = start;
-                self.msg = "".to_string();
-            }
-            None => self.msg = format!("Search string not found: {}", sel),
-        }
-    }
-
     fn sf_step(&mut self) {
         // save (main.rs:299-313): NO prompt, writes the bound filename
         let bi = self.bi();
@@ -1171,12 +1193,22 @@ impl M {
     }
 
     // isearch machine: the FULL loop arms (main.rs:428-519; gate J4).
-    fn isearch(&mut self, tail: &[u8]) {
+    fn isearch(&mut self, tail: &[u8], mut backward: bool) {
+        // C-s / C-r unified incremental loop (main.rs isearch): each
+        // char extends the query and hops in the CURRENT direction;
+        // C-s / C-r INSIDE the loop SWITCH direction (Emacs); DEL pops
+        // and re-searches from the direction-matching buffer end;
+        // Enter accepts; C-g restores the entry point + Cancelled; ESC
+        // accepts + swallows one arrow. A forward hit lands at the
+        // match END, a backward hit at the match START; `last` tracks
+        // the match START (next hop: strictly after / before it).
+        // Progressive frames are production-only: P5/P6 compare final
+        // grids (05 §5), so the model needs no mid-search paint.
         let bi = self.bi();
         let entry = self.bufs[bi].point;
         let mut qs: Vec<char> = vec![];
-        // production `last = orig` (main.rs:437): the FIRST char searches
-        // from last+1 = orig+1, NOT from 0
+        // production `last = orig`: the FIRST char searches from
+        // last+1 (forward) / last (backward), NOT from 0 / the tail
         let mut last = entry;
         let mut i = 0usize;
         while i < tail.len() {
@@ -1187,46 +1219,17 @@ impl M {
                 self.msg = "Cancelled".to_string();
                 return;
             }
-            if b == 0x0d {
+            if b == 0x0d || b == 0x0a {
                 self.msg = "".to_string();
                 return;
             }
-            if b == 0x13 {
-                // C-s mid-search: repeat the query from last+1 (484-486)
-                if !qs.is_empty() {
-                    let q: String = qs.iter().collect();
-                    let hit = self
-                        .bufs[bi]
-                        .find_forward(&q, last + 1)
-                        .or_else(|| self.bufs[bi].find_forward(&q, 0));
-                    if let Some(end) = hit {
-                        self.bufs[bi].point = end;
-                        last = end - qs.len(); // main.rs:503 (shared hit arm)
-                    }
-                }
-                continue;
-            }
-            if b == 0x7f {
-                // DEL: pop + RE-SEARCH from 0, last = end - qs.len()
-                if !qs.is_empty() {
-                    qs.pop();
-                }
-                if !qs.is_empty() {
-                    let q: String = qs.iter().collect();
-                    if let Some(end) = self.bufs[bi].find_forward(&q, 0) {
-                        self.bufs[bi].point = end;
-                        last = end - qs.len();
-                    }
-                }
-                continue;
-            }
             if b == 0x1b {
                 // ESC accepts. Production consumes ONE byte
-                // unconditionally (main.rs:452), and a THIRD only when
-                // the second is '[' (453-465: [A-D = arrows). The pools
-                // never put ESC in an isearch tail (05 §2), and ESC as
-                // the LAST tail byte would eat the next stdin byte in
-                // production - unrepresentable here, recorded.
+                // unconditionally, and a THIRD only when the second is
+                // '[' ([A-D = arrows). The pools never put ESC in an
+                // isearch tail (05 §2); ESC as the LAST tail byte
+                // would eat the next stdin byte in production -
+                // unrepresentable here, recorded.
                 if i < tail.len() {
                     let n2 = tail[i];
                     i += 1;
@@ -1244,32 +1247,81 @@ impl M {
                 self.msg = "".to_string();
                 return;
             }
+            if b == 0x7f {
+                // DEL: pop + RE-SEARCH from the direction's far end
+                // (forward: first hit; backward: last hit)
+                if !qs.is_empty() {
+                    qs.pop();
+                }
+                if !qs.is_empty() {
+                    let q: String = qs.iter().collect();
+                    let qlen = qs.len();
+                    let hit = if backward {
+                        let l = self.bufs[bi].len();
+                        self.bufs[bi].find_backward(&q, l + 1)
+                    } else {
+                        self.bufs[bi].find_forward(&q, 0)
+                    };
+                    if let Some(p) = hit {
+                        self.bufs[bi].point = p;
+                        last = if backward { p } else { p - qlen };
+                    }
+                }
+                continue;
+            }
+            if b == 0x13 || b == 0x12 {
+                // Emacs direction SWITCH (main.rs): C-s forward, C-r
+                // backward, re-searching the CURRENT query from the
+                // current match position
+                backward = b == 0x12;
+                if !qs.is_empty() {
+                    let q: String = qs.iter().collect();
+                    let qlen = qs.len();
+                    if let Some(p) = self.search_step(bi, &q, backward, last) {
+                        self.bufs[bi].point = p;
+                        last = if backward { p } else { p - qlen };
+                    }
+                }
+                continue;
+            }
             {
                 // Any other byte extends the query: read_char_eof
-                // returns None ONLY at EOF (terminal.rs:135-160), so a
-                // CONTROL byte is a query CHAR - find_forward against
-                // the printable pool misses -> bell, char DROPPED, loop
-                // CONTINUES (main.rs:493-513; the EOF break is 488-490,
-                // and this harness has no mid-tail EOF). UTF-8 lead
-                // byte continuation consumption (PBTF-007) is n/a: the
-                // isearch tails are ASCII (05 §2).
+                // returns None ONLY at EOF, so a CONTROL byte is a
+                // query CHAR - find against the printable pool misses
+                // -> bell, char DROPPED, loop CONTINUES. The EOF break
+                // is n/a here (no mid-tail EOF); UTF-8 lead
+                // continuation (PBTF-007) is n/a: tails are ASCII
+                // (05 §2).
                 let mut attempt: Vec<char> = qs.clone();
                 attempt.push(b as char);
                 let q: String = attempt.iter().collect();
-                let hit = self
-                    .bufs[bi]
-                    .find_forward(&q, last + 1)
-                    .or_else(|| self.bufs[bi].find_forward(&q, 0));
-                if let Some(end) = hit {
-                    last = end - attempt.len(); // main.rs:503 (match START)
+                let qlen = attempt.len();
+                if let Some(p) = self.search_step(bi, &q, backward, last) {
+                    last = if backward { p } else { p - qlen }; // match START
                     qs = attempt;
-                    self.bufs[bi].point = end;
+                    self.bufs[bi].point = p;
                 }
-                // MISS: bell - the char is DROPPED from qs (hit-arm
-                // append at main.rs:501), point untouched (509-510)
+                // MISS: bell - the char is DROPPED from qs, point
+                // untouched (the qs append is in the hit arm)
             }
         }
         self.msg = "".to_string();
+    }
+
+    // production search_step mirror: forward = find_forward(q, last+1)
+    // then wrap to 0; backward = find_backward(q, last) (STRICTLY
+    // before the current match start) then wrap to the buffer tail.
+    fn search_step(&self, bi: usize, q: &str, backward: bool, last: usize) -> Option<usize> {
+        if backward {
+            let l = self.bufs[bi].len();
+            self.bufs[bi]
+                .find_backward(q, last)
+                .or_else(|| self.bufs[bi].find_backward(q, l + 1))
+        } else {
+            self.bufs[bi]
+                .find_forward(q, last + 1)
+                .or_else(|| self.bufs[bi].find_forward(q, 0))
+        }
     }
 }
 
@@ -1298,6 +1350,9 @@ fn op_bytes(op: &Op) -> Vec<u8> {
         Op::Cn => v.push(0x0E),
         Op::Cp => v.push(0x10),
         Op::Co => v.push(0x0F),
+        Op::Cv => v.push(0x16),
+        Op::Cw => v.push(0x17),
+        Op::Mv => v.extend([0x1b, 0x76]),
         Op::Ct => v.push(0x14),
         Op::Cspc => v.push(0x00),
         Op::Mb => v.extend([0x1B, 0x62]),
@@ -1526,19 +1581,6 @@ fn prompt_run(m: &M, op: &Op) -> Option<PromptRun> {
             r.prefix_len = 1;
             Some(r)
         }
-        Op::RfFound | Op::RfMiss => {
-            let q: &[u8] = if matches!(op, Op::RfFound) { b"a" } else { b"zzqz" };
-            let mut bytes = vec![0x12];
-            bytes.extend(q);
-            bytes.push(0x0D);
-            let mut r = pr(bytes, "Reverse find: ", vec![], false, |m, sel, _c| {
-                m.apply_rf(&sel);
-                vec![]
-            });
-            r.lead = 0x12;
-            r.prefix_len = 1;
-            Some(r)
-        }
         _ => None,
     }
 }
@@ -1562,6 +1604,18 @@ fn run_tail(m: &mut M, tail: &[u8]) {
 // keybinding, 01 §3).
 fn run_op(m: &mut M, s: &Session, op: &Op) {
     match op {
+        Op::RfFound | Op::RfMiss => {
+            // C-r: the SAME incremental loop, backward (main.rs); NO
+            // "Reverse find: " prompt reader anymore - C-r consumes
+            // the tail bytes directly
+            let q: &[u8] = if matches!(op, Op::RfFound) { b"a" } else { b"zzqz" };
+            let mut tail = q.to_vec();
+            tail.push(0x0D);
+            let mut bytes = vec![0x12];
+            bytes.extend(&tail);
+            s.send_hex(&bytes);
+            m.run_cmd(0x12, move |m| m.isearch(&tail, true));
+        }
         Op::IsEnter | Op::IsCg => {
             let q: &[u8] = if matches!(op, Op::IsEnter) { b"a" } else { b"z" };
             let commit: u8 = if matches!(op, Op::IsEnter) { 0x0D } else { 0x07 };
@@ -1570,7 +1624,7 @@ fn run_op(m: &mut M, s: &Session, op: &Op) {
             let mut bytes = vec![0x13];
             bytes.extend(&tail);
             s.send_hex(&bytes);
-            m.run_cmd(0x13, move |m| m.isearch(&tail));
+            m.run_cmd(0x13, move |m| m.isearch(&tail, false));
         }
         Op::Sf => {
             // C-x C-s == 0x18 0x13 (keymap ctrl_x_key: 0x13 Save);
@@ -1592,9 +1646,7 @@ fn run_op(m: &mut M, s: &Session, op: &Op) {
         | Op::IfSeed
         | Op::KillYes
         | Op::KillNo
-        | Op::Gl(_)
-        | Op::RfFound
-        | Op::RfMiss => {
+        | Op::Gl(_) => {
             let r = prompt_run(m, op).expect("prompt op");
             s.send_hex(&r.bytes);
             m.run_prompt(r);
@@ -1730,7 +1782,7 @@ fn p6_isearch(m: &mut M, s: &Session, tail: &[u8]) {
     bytes.extend(tail);
     s.send_hex(&bytes);
     let t = tail.to_vec();
-    m.run_cmd(0x13, move |m| m.isearch(&t));
+    m.run_cmd(0x13, move |m| m.isearch(&t, false));
     settle(SETTLE_CHECK_MS);
 }
 
@@ -2099,6 +2151,9 @@ fn p5_ops() -> impl Strategy<Value = Vec<Op>> {
         2 => (0usize..5).prop_map(Op::Gl),
         1 => Just(Op::RfFound),
         1 => Just(Op::RfMiss),
+        2 => Just(Op::Cv),
+        2 => Just(Op::Mv),
+        2 => Just(Op::Cw),
         1 => Just(Op::IsEnter),
         1 => Just(Op::IsCg),
     ];
