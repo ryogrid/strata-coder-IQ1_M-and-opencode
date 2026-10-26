@@ -148,6 +148,26 @@ impl Buffer {
         cut
     }
 
+    // Read-only slice of the logical chars [lo..hi) (hi clamped to len):
+    // gap-aware, mutates NOTHING. M-w (kill-ring-save) copies the region
+    // through this; C-w uses its own cut path (kill_region).
+    pub fn slice_text(&self, lo: usize, hi: usize) -> String {
+        let n = self.len();
+        let lo = lo.min(n);
+        let hi = hi.min(n);
+        let gap = self.gap_end - self.gap_start;
+        let mut s = String::new();
+        let mut i = lo;
+        while i < hi {
+            // logical -> physical: chars before the gap map 1:1, chars
+            // at/after the gap shift right by the gap size
+            let phys = if i < self.gap_start { i } else { i + gap };
+            s.push(self.chars[phys]);
+            i += 1;
+        }
+        s
+    }
+
     pub fn char_at(&self, pos: usize) -> char {
         self.chars[self.to_index(pos)]
     }
@@ -439,6 +459,17 @@ pub struct UndoState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn slice_text_reads_across_the_gap() {
+        let mut b = Buffer::new("t", "alpha beta gamma");
+        assert_eq!(b.slice_text(0, 5), "alpha"); // gap at END: direct read
+        b.point = 6;
+        b.delete_backward(); // cuts ' ', gap window now sits at 5
+        assert_eq!(b.text(), "alphabeta gamma");
+        assert_eq!(b.slice_text(3, 11), "habeta g"); // crosses the gap
+        assert_eq!(b.slice_text(5, 5), "");
+        assert_eq!(b.slice_text(10, 99), "gamma"); // hi clamped to len
+    }
 use super::*;
 #[test]
 fn gap_buffer_roundtrip() {

@@ -92,8 +92,10 @@ Run the editor from a real terminal:
   consecutive `C-k`s accumulate the killed text (newline included) and any
   other command ends the run; `C-w` (kill-region) cuts the region between
   mark and point (point AND mark land at the region start; an empty region
-  does nothing) and consecutive `C-w`s accumulate like `C-k` runs; `C-y`
-  pastes the killed text back at point.
+  does nothing) and consecutive `C-w`s accumulate like `C-k` runs; `M-w`
+  (kill-ring-save) COPIES the region into the kill ring without cutting
+  (the region is deactivated, echo `Region saved`, empty region silent);
+  `C-y` pastes the killed text back at point.
 - **Undo** — `C-/` (`0x1f`; xterm-family terminals send `Ctrl+/` and
   `Ctrl+_` as this same byte) restores the last change: text, point and
   mark all return, and the buffer is marked modified (an undo is a change
@@ -255,6 +257,7 @@ Run the editor from a real terminal:
 | `C-t` | transpose chars around point |
 | `C-k` | kill to end of line (stops at the region mark when it is ahead on the line) |
 | `C-w` | kill-region: cut the region between mark and point (point AND mark land at the region start; an empty region does nothing); consecutive `C-w`s accumulate the killed text |
+| `M-w` | kill-ring-save: COPY the region between mark and point into the kill ring (no cut; the region is DEACTIVATED like `C-g` and the echo is `Region saved`; an empty region does nothing, silently); consecutive `M-w`s accumulate like `C-w` runs |
 | `C-y` | paste killed text at point (consecutive `C-k`s accumulate, including the newline) |
 | `C-/` | undo: restore the last change (text + point + mark, buffer marked modified); consecutive typing = one group, consecutive `C-k` = one group, any other command breaks the run; bounded to 200 groups; `C-x k` clears the buffer's entries; echo `Undo` / `No change to undo` (arrives as byte `0x1f`, the same code `C-_` sends) |
 | `C-@` (`C-space`, NUL) | set the mark at point (start a region); when mark is on the current line, `C-a`/`C-e`/`C-b`/`C-f`/`C-k` stop at the region edge; mark..point is painted cyan in the ACTIVE window, live on every move |

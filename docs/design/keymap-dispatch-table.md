@@ -71,6 +71,7 @@ review 当時の計測で「約 300 行」)は 1 関の平坦な if-else 連鎖�
 | Meta | 0x62/0x66 | backward/forward-word | |
 | Meta | 0x3c/0x3e | beginning/end-of-buffer | |
 | Meta | 0x76 | scroll-page-up(M-v): 前 line を rows-2 回 | 無言・undo entry なし |
+| Meta | 0x77 | kill-ring-save(M-w): region(mark↔point 間)を killed へ **copy**(cut 無し・undo entry 無し)。mark:=point で region 解除、msg `Region saved` | 空 region は完全無言。M-w 連続 run で killed 蓄積(prev_cmd==0x1b && prev_meta==0x77。meta は全て lead 0x1b のため tail byte の追尾が必要: `Ed.meta_n`/`Ed.prev_meta`) |
 | Meta | その他 | **無言 no-op**(現状維持) | |
 
 ## 3. 設計
@@ -90,6 +91,7 @@ pub enum Cmd {
     BackwardWord, ForwardWord,
     DeleteBackward, DeleteForward, OpenLine, TransposeChars,
     KillLine, KillRegion, Yank,       // T-9: Undo=C-/(0x1f)。C-w=KillRegion(0x17 素)
+    CopyRegion,                       // M-w(0x77)=kill-ring-save(meta 専用。run 規則は prev_cmd+prev_meta ペア)
     GotoLine, Isearch,                // C-s/C-r は 1 つの isearch(backward) ループ
     FindBackward,                     // 0x12: 同一ループの backward 方向(arm は isearch(true))
     FindFile, Save, WriteFile, InsertFile, KillBuffer, SwitchBuffer(bool), // 0x02=list形式

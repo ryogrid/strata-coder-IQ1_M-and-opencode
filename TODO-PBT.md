@@ -307,6 +307,19 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
+- 2026-10-26: M-w(kill-ring-save)実装=region(mark↔point 間)を kill ring へ
+  **copy**(cut 無し・undo entry 無し)。`Cmd::CopyRegion`+meta 0x77、
+  `Buffer::slice_text`(gap 読み取り専用、unit 追加)。C-w と同じ lo/hi 規約、
+  空 region は完全無言(msg/killed 不変=pin 済)。M-w は region を **deactivate**
+  (mark:=point+paint OFF)し msg `Region saved`。run 規則は meta tail byte の
+  追尾が必須(meta は全 command が lead 0x1b を共有するため prev_cmd だけでは
+  M-w/M-b を区別できない):`Ed.meta_n`(PrefixMeta が記録)+`Ed.prev_meta`
+  (loop 末尾ペア更新)。モデルは `Op::Mw`(pool 重み 2)+`meta_n(op)` ヘルパ+
+  `prev_meta` で完全ミラー(共有 slice_text/grid に見える msg を厳密一致)。
+  e2e s168 追加=97 シナリオ(武装→copy→解除→無言 2 発目→C-y ペースト→pct 追従)。
+  検証:unit 55、combination P5/P6/P7/P7b 全緑、e2e 97/97、pbt-run 全段
+  (20/23/27)緑、release_smoke PASS、コードゲート PASS(Info 2 件のみ=
+  既存スタイル踏襲と、deactivate により累積枝は到達困難=C-w と同じ設計対称)。
 - 2026-10-26: ユーザー報告 3 点対応=コミット 5ed8ea5(CI 緑)。
   region ハイライトの transient-mark 化
   (C-@ で ARM、C-g と 型入力は C-o/DEL/yank で DISARM、ARM 解除後の移動で

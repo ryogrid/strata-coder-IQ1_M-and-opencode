@@ -36,6 +36,7 @@ Ops (each = one FULL keybinding, weighted):
 | 2 | `C-v` | page down: next_line x (rows-2), column kept, clamp; SILENT, no entry |
 | 2 | `M-v` | page up: previous_line x (rows-2) |
 | 2 | `C-w` | kill-region (region only when `C-@` set a mark; empty region = SILENT no-op); killed accumulation on C-w runs (tag 2 group) |
+| 2 | `M-w` | kill-ring-save: COPY the region (no cut, no entry), mark := point, msg `Region saved`; empty region = SILENT no-op (msg persists); killed accumulation on consecutive M-w runs via the prev/prev_meta pair (the prev_meta mirror rides the run_op bottom) |
 | 2 | `C-x` + C-g; ESC + C-g | prefix-abort msg / silent |
 | 2 | plain `C-g` (0x07) | `Cmd::Cancel`: msg `Cancelled` (main.rs:922) - the canonical msg-precedence producer on the status row |
 | 1 | `C-q` + printable | quote_insert (tag 1) |

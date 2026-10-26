@@ -102,6 +102,14 @@ struct Ed {
     // and chaining C-y to C-y is intentionally not expressible). README
     // documents exactly this "any other command ends the run".
     prev_cmd: u8,
+    // M-w's run test needs the META TAIL byte too: every Meta command
+    // shares the lead 0x1b, so prev_cmd alone cannot tell M-w from M-b.
+    // meta_n records the tail byte PrefixMeta read for the CURRENT
+    // command; prev_meta carries it into the NEXT iteration (0 for every
+    // non-meta command). The M-w run test is prev_cmd == 0x1b &&
+    // prev_meta == 0x77.
+    prev_meta: u8,
+    meta_n: u8,
     moved: bool,
     // T-9: C-/ undo. The stack lives HERE (grouping is a dispatch-level
     // concern); buffer.rs owns the snapshot/restore mechanics.
@@ -658,6 +666,34 @@ impl Ed {
         }
     }
 
+    fn copy_region(&mut self) {
+    let bi = self.bi();
+        // M-w (Emacs kill-ring-save): copy the region mark..point into
+        // the kill ring WITHOUT deleting. An EMPTY region is SILENT: no
+        // kill touch, no message (the C-w contract). Consecutive M-w
+        // runs accumulate into the killed string (the C-w run rule at
+        // the meta level: prev_cmd == 0x1b && prev_meta == 0x77). The
+        // copy DEACTIVATES the region (transient-mark: mark := point,
+        // paint OFF) and reports "Region saved". NO text change -> no
+        // undo entry, and the change-run breaks (nothing touched).
+        let (lo, hi) = {
+            let b = &self.bufs[bi];
+            (b.point.min(b.mark), b.point.max(b.mark).min(b.len()))
+        };
+        if lo >= hi {
+            return; // SILENT (empty region)
+        }
+        let cut = self.bufs[bi].slice_text(lo, hi);
+        if self.prev_cmd == 0x1b && self.prev_meta == 0x77 {
+            self.killed.push_str(&cut);
+        } else {
+            self.killed = cut;
+        }
+        self.bufs[bi].mark = self.bufs[bi].point;
+        self.region_active = false; // DISARM the region paint
+        self.msg = "Region saved".to_string();
+    }
+
     fn backward_word(&mut self) {
     let bi = self.bi();
             self.bufs[bi].backward_word();
@@ -892,6 +928,8 @@ fn main() {
         msg,
         killed: "".to_string(),
         prev_cmd: 0,
+        prev_meta: 0,
+        meta_n: 0,
         moved: false,
         undo: vec![],
         group_alive: false,
@@ -946,6 +984,7 @@ fn main() {
             }
             Cmd::PrefixMeta => {
                 let n = terminal::read_byte();
+                ed.meta_n = n; // the tail byte feeds the loop-bottom run rule
                 match keymap::meta_key(n) {
                     Cmd::PrefixArrow => {
                         let t = terminal::read_byte();
@@ -958,6 +997,7 @@ fn main() {
                     Cmd::BeginningOfBuffer => ed.beginning_of_buffer(),
                     Cmd::EndOfBuffer => ed.end_of_buffer(),
                     Cmd::ScrollPageUp => ed.page_up(), // M-v (0x76)
+                    Cmd::CopyRegion => ed.copy_region(), // M-w (0x77)
                     _ => {} // MetaUnbound: silent
                 }
             }
@@ -991,6 +1031,7 @@ fn main() {
             Cmd::Unbound(..) => {}
             Cmd::MetaUnbound => {}
             Cmd::ScrollPageUp => {} // M-v: produced by meta_key only
+            Cmd::CopyRegion => {} // M-w: produced by meta_key only
             Cmd::BeginningOfBuffer | Cmd::EndOfBuffer => {}
             Cmd::BackwardWord | Cmd::ForwardWord => {}
             Cmd::FindFile | Cmd::Save => {}
@@ -1004,6 +1045,7 @@ fn main() {
         }
         ed.sync_out();
         ed.prev_cmd = b;
+        ed.prev_meta = if b == 0x1b { ed.meta_n } else { 0 };
     }
 }
 
@@ -1021,6 +1063,8 @@ mod tests {
             msg: String::new(),
             killed: String::new(),
             prev_cmd: 0,
+            prev_meta: 0,
+            meta_n: 0,
             moved: false,
             undo: vec![],
             group_alive: false,

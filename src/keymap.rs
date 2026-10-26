@@ -25,6 +25,7 @@ pub enum Cmd {
     BeginningOfLine, EndOfLine, BackwardChar, ForwardChar,
     NextLine, PreviousLine, BeginningOfBuffer, EndOfBuffer,
     ScrollPageDown, ScrollPageUp, // C-v / M-v: one screenful (point moves; the scroll follows)
+    CopyRegion, // M-w: kill-ring-save (copy region into the kill ring)
     BackwardWord, ForwardWord,
     DeleteBackward, DeleteForward, OpenLine, TransposeChars,
     KillLine, KillRegion, Yank,  // C-k / C-w / C-y
@@ -106,6 +107,7 @@ pub fn meta_key(n: u8) -> Cmd {
         0x3c => Cmd::BeginningOfBuffer, // C-</C-> arrive as Meta forms
         0x3e => Cmd::EndOfBuffer,
         0x76 => Cmd::ScrollPageUp, // M-v (Emacs: scroll-page-up)
+        0x77 => Cmd::CopyRegion, // M-w (Emacs: kill-ring-save)
         _ => Cmd::MetaUnbound,
     }
 }
@@ -163,6 +165,7 @@ mod tests {
         assert!(meta_key(0x62) == Cmd::BackwardWord);
         assert!(meta_key(0x3c) == Cmd::BeginningOfBuffer);
         assert!(meta_key(0x76) == Cmd::ScrollPageUp); // M-v
+        assert!(meta_key(0x77) == Cmd::CopyRegion); // M-w
         assert!(meta_key(0x7a) == Cmd::MetaUnbound); // SILENT
         assert!(arrow_key(0x41) == Cmd::Arrow(0));
         assert!(arrow_key(0x44) == Cmd::Arrow(3));

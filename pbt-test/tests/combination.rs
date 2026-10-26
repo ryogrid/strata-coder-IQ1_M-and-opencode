@@ -508,6 +508,7 @@ enum Op {
     Cv, // C-v: page down (rows-2 lines, column kept)
     Mv, // M-v: page up
     Cw, // C-w: kill-region (region only when Cspc set the mark; else silent)
+    Mw, // M-w: kill-ring-save (copy region, NO cut; deactivates; msg "Region saved")
     Cspc,
     Mb,
     Mf,
@@ -550,6 +551,7 @@ struct M {
     active: usize,
     msg: String,
     killed: String,
+    prev_meta: u8, // mirrors production Ed.prev_meta (M-w run rule tail byte)
     prev: u8,
     moved: bool,
     undo: Vec<EdEntry>,
@@ -614,6 +616,7 @@ impl M {
             msg: String::new(),
             killed: String::new(),
             prev: 0,
+            prev_meta: 0,
             moved: false,
             undo: vec![],
             group_alive: false,
@@ -700,7 +703,26 @@ impl M {
             self.group_alive = false;
         }
         self.prev = self.lead(op);
+        // production loop bottom: prev_meta = the meta tail byte the
+        // PrefixMeta arm consumed (meta_n), 0 for every non-meta op
+        self.prev_meta = if self.prev == 0x1b { self.meta_n(op) } else { 0 };
         self.draw(); // production frame() at the end of every iteration
+    }
+
+    fn meta_n(&self, op: &Op) -> u8 {
+        // the tail byte PrefixMeta consumed for this op (production
+        // Ed.meta_n; every meta op arrives as ESC + tail)
+        match op {
+            Op::Mb => 0x62,
+            Op::Mf => 0x66,
+            Op::Mlt => 0x3c,
+            Op::Mgt => 0x3e,
+            Op::Mv => 0x76,
+            Op::Mw => 0x77,
+            Op::Arr(_) => 0x5b,
+            Op::MetaG => 0x07,
+            _ => 0,
+        }
     }
 
     fn lead(&self, op: &Op) -> u8 {
@@ -729,7 +751,7 @@ impl M {
             Op::Mv => 0x1b,
             Op::Ct => 0x14,
             Op::Cspc => 0x00,
-            Op::Mb | Op::Mf | Op::Mlt | Op::Mgt | Op::Arr(_) | Op::MetaG => 0x1b,
+            Op::Mb | Op::Mf | Op::Mlt | Op::Mgt | Op::Arr(_) | Op::MetaG | Op::Mw => 0x1b,
             Op::Undo => 0x1f,
             Op::Cg => 0x07,
             Op::Quote(_) => 0x11,
@@ -847,6 +869,28 @@ impl M {
                     } else {
                         self.killed = cut;
                     }
+                }
+            }
+            Op::Mw => {
+                // copy_region (main.rs): copy mark..point into killed
+                // (NO text change, NO undo entry, run breaks); empty
+                // region SILENT; accumulate on consecutive M-w (prev
+                // == 0x1b && prev_meta == 0x77); DEACTIVATES (mark :=
+                // point) and msg "Region saved" (status row is visible)
+                let (lo, hi) = {
+                    let b = &self.bufs[bi];
+                    (b.point.min(b.mark), b.point.max(b.mark).min(b.len()))
+                };
+                if lo < hi {
+                    let cut = self.bufs[bi].slice_text(lo, hi);
+                    if self.prev == 0x1b && self.prev_meta == 0x77 {
+                        self.killed.push_str(&cut);
+                    } else {
+                        self.killed = cut;
+                    }
+                    let p = self.bufs[bi].point;
+                    self.bufs[bi].mark = p;
+                    self.msg = "Region saved".to_string();
                 }
             }
             Op::Cspc => {
@@ -1359,6 +1403,7 @@ fn op_bytes(op: &Op) -> Vec<u8> {
         Op::Co => v.push(0x0F),
         Op::Cv => v.push(0x16),
         Op::Cw => v.push(0x17),
+        Op::Mw => v.extend([0x1b, 0x77]),
         Op::Mv => v.extend([0x1b, 0x76]),
         Op::Ct => v.push(0x14),
         Op::Cspc => v.push(0x00),
@@ -2161,6 +2206,7 @@ fn p5_ops() -> impl Strategy<Value = Vec<Op>> {
         2 => Just(Op::Cv),
         2 => Just(Op::Mv),
         2 => Just(Op::Cw),
+        2 => Just(Op::Mw),
         1 => Just(Op::IsEnter),
         1 => Just(Op::IsCg),
     ];

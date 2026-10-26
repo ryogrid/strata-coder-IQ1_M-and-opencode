@@ -1375,11 +1375,30 @@ t_s167() {  # C-g DEACTIVATES the region (transient-mark): paint ends and stays 
   report s167 "$ok"
 }
 
-for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154 t_s155 t_s156 t_s157 t_s158 t_s159 t_s160 t_s161 t_s162 t_s163 t_s164 t_s165 t_s166 t_s167; do
+t_s168() {  # M-w kill-ring-save: COPY the region (no cut), deactivate, "Region saved"
+  printf 'alpha beta gamma\nsecond line\n' > /tmp/emur-e2e-mw.txt
+  start_session s168 /tmp/emur-e2e-mw.txt
+  local ok=1
+  tmux send-keys -t "$SESSION" C-@; sleep "$STEP"
+  sendb $'\006\006\006\006\006'                 # region "alpha" (mark 0..point 5)
+  expect_e '\[46malp' || ok=0                      # armed: cyan band over 'alp'
+  sendb $'\033w'                                  # M-w: copy into the kill ring
+  expect_lastline 'Region saved 1/3 (17%)' || ok=0
+  ! cap_e | grep -qF -- $'\x1b[46m' || ok=0       # the copy DEACTIVATES the region
+  expect 'alpha beta gamma' || ok=0                # NO cut: the text stays intact
+  sendb $'\033w'                                  # empty region: SILENT (no kill touch)
+  expect_lastline 'Region saved 1/3 (17%)' || ok=0 # msg PERSISTS through the silent op
+  sendb $'\031'                                   # C-y: paste "alpha" at point
+  expect 'alphaalpha beta gamma' || ok=0
+  expect_lastline 'Region saved 1/3 (29%)' || ok=0 # the msg survives the paste, pct moves
+  report s168 "$ok"
+}
+
+for t in t_s01 t_s02 t_s03 t_s04 t_s05 t_s06 t_s07 t_s08 t_s09 t_s10 t_s11 t_s12 t_s13 t_s14 t_s15 t_s16 t_s17 t_s20 t_s21 t_s22 t_s23 t_s24 t_s25 t_s26 t_s27 t_s28 t_s30 t_s31 t_s40 t_s41 t_s42 t_s50 t_s51 t_s52 t_s60 t_s61 t_s62 t_s63 t_s70 t_s71 t_s72 t_s80 t_s81 t_s82 t_s83 t_s90 t_s91 t_s92 t_s93 t_s94 t_s100 t_s101 t_s102 t_s103 t_s104 t_s105 t_s110 t_s111 t_s112 t_s120 t_s121 t_s122 t_s123 t_s124 t_s130 t_s131 t_s132 t_s133 t_s140 t_s141 t_s142 t_s143 t_s144 t_s145 t_s146 t_s147 t_s148 t_s149 t_s150 t_s151 t_s152 t_s153 t_s154 t_s155 t_s156 t_s157 t_s158 t_s159 t_s160 t_s161 t_s162 t_s163 t_s164 t_s165 t_s166 t_s167 t_s168; do
   "$t"
 done
 
-rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt /tmp/emur-e2e-pipe-s140.out /tmp/emur-e2e-pipe-s142.out /tmp/emur-e2e-s155.txt /tmp/emur-e2e-undo.txt /tmp/emur-e2e-page.txt /tmp/emur-e2e-killw.txt /tmp/emur-e2e-hilite.txt /tmp/emur-e2e-rg.txt
+rm -rf /tmp/emur-cx; rm -f /tmp/emur-e2e-insert.txt /tmp/emur-e2e-crlf.txt /tmp/emur-e2e-big.txt /tmp/emur-e2e-open.txt /tmp/emur-e2e-comp.txt /tmp/emur-e2e-fcomp.txt /tmp/emur-e2e-h.rs /tmp/emur-e2e-h.py /tmp/emur-e2e-h.json /tmp/emur-e2e-h.md /tmp/emur-e2e-h.txt /tmp/emur-e2e-h2.rs /tmp/emur-e2e-h4.json /tmp/emur-e2e-h5.md /tmp/emur-e2e-arg.txt /tmp/emur-e2e-pipe-s140.out /tmp/emur-e2e-pipe-s142.out /tmp/emur-e2e-s155.txt /tmp/emur-e2e-undo.txt /tmp/emur-e2e-page.txt /tmp/emur-e2e-killw.txt /tmp/emur-e2e-hilite.txt /tmp/emur-e2e-rg.txt /tmp/emur-e2e-mw.txt
 rm -rf /tmp/emur-e8; rm -f "$HOME/emur-t8-marker.txt"
 
 if [ "$FAILED" = 0 ]; then
