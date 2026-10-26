@@ -301,7 +301,8 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
-- 2026-10-26: isearch マッチ+region のリアルタイム背景ハイライト
+- 2026-10-26: isearch マッチ+region のリアルタイム背景ハイライト=コミット
+  1b42fee(CI 緑)の
   (Style::Isearch=43m 黄/Style::Region=46m 青、screen.rs `apply_span`、
   `Ed::isearch_hi` で C-s/C-r の現マッチを**全ウィンドウ**描画、region は
   active leaf の **leaf 所有** point/mark から描画=ウィンドウ切替直後の
