@@ -292,7 +292,8 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
-- 2026-10-26: C-v/M-v/C-w 実装+C-s/C-r 統一増分 isearch ループ(プロダクト
+- 2026-10-26: C-v/M-v/C-w 実装+C-s/C-r 統一増分 isearch ループ=コミット cfc4404
+  (CI 緑)のプロダクト
   keymap.rs/buffer.rs/main.rs+README 実態化)と P5 combination ミラー追従
   (模型 isearch(tail, backward)+search_step、Rf op は C-r 直 tail 経路へ
   変更=read_line/apply_rf/prompt_run Rf 分支削除、新 op Cv/Mv/Cw=pool
