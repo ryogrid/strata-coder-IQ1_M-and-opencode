@@ -116,6 +116,12 @@ struct Ed {
     // C-s/C-r loop displays a match; None otherwise (the draw overlays
     // Style::Isearch, screen.rs).
     isearch_hi: Option<(usize, usize, usize)>,
+    // Region paint switch (Emacs transient-mark): C-@ arms it, C-g and
+    // any text EDITING (typing/backspace/yank) disarm it. The cyan
+    // region face shows ONLY while armed and mark != point - motions
+    // after a disarm never re-paint (the mark VALUE keeps working for
+    // the region-edge motion rules; only the paint is gated).
+    region_active: bool,
 }
 
 // One undo entry: the pre-change full state of buffer `bi` plus the
@@ -175,6 +181,7 @@ impl Ed {
             self.active,
             self.msg.to_string(),
             self.isearch_hi,
+            self.region_active,
         );
     }
 
@@ -198,6 +205,17 @@ impl Ed {
             let bi = self.bi();
             sync_leaf(&mut self.tree, &self.bufs, self.active, bi);
         }
+    }
+
+    fn cancel(&mut self) {
+        // C-g: cancel the echo AND deactivate the region (Emacs
+        // transient-mark): mark := point, so the cyan region highlight
+        // ENDS with the C-g. The region-edge motion rules (C-a/C-e/
+        // C-b/C-f/C-k) die with it - re-arm with `C-@`.
+        let bi = self.bi();
+        self.bufs[bi].mark = self.bufs[bi].point;
+        self.region_active = false; // DISARM the region paint
+        self.msg = "Cancelled".to_string();
     }
 
     fn quit(&mut self) -> bool {
@@ -550,6 +568,8 @@ impl Ed {
         }
         if cancelled {
             self.bufs[bi].point = orig;
+            self.bufs[bi].mark = orig; // C-g also DEACTIVATES the region
+            self.region_active = false;
             self.msg = "Cancelled".to_string();
         } else {
             self.msg = "".to_string();
@@ -661,6 +681,7 @@ impl Ed {
     fn set_mark(&mut self) {
     let bi = self.bi();
         self.bufs[bi].mark = self.bufs[bi].point;
+    self.region_active = true; // ARM the region paint (Emacs C-@)
     self.msg = "".to_string();
     }
 
@@ -696,6 +717,7 @@ impl Ed {
         if self.bufs[bi].text() != pre.text {
             self.push_entry(bi, 0, pre); // T-9 (no-op at point 0: no entry)
         }
+        self.region_active = false; // EDITING disarms the region paint
     }
 
     fn delete_forward(&mut self) {
@@ -712,6 +734,7 @@ impl Ed {
         let pre = self.bufs[bi].snapshot();
         self.bufs[bi].insert_newline_after(); // Ctrl-o
         self.push_entry(bi, 0, pre); // T-9: always inserts
+        self.region_active = false; // EDITING disarms the region paint
     }
 
     fn transpose_chars(&mut self) {
@@ -744,6 +767,7 @@ impl Ed {
         if self.bufs[bi].text() != pre.text {
             self.push_entry(bi, 0, pre); // T-9 (empty kill-ring: no entry)
         }
+        self.region_active = false; // EDITING disarms the region paint
     }
 
     fn end_of_line(&mut self) {
@@ -808,6 +832,7 @@ impl Ed {
     if self.bufs[bi].text() != pre.text {
         self.push_entry(bi, 1, pre);
     }
+    self.region_active = false; // EDITING disarms the region paint
     }
 
     fn newline(&mut self) {
@@ -815,6 +840,7 @@ impl Ed {
         let pre = self.bufs[bi].snapshot(); // T-9: typing group (tag 1)
         self.bufs[bi].insert_char('\n'); // Ctrl-j / Ctrl-m: newline
         self.push_entry(bi, 1, pre);
+        self.region_active = false; // EDITING disarms the region paint
     }
 
     fn self_insert(&mut self, b: u8) {
@@ -828,6 +854,7 @@ impl Ed {
     if self.bufs[bi].text() != pre.text {
         self.push_entry(bi, 1, pre);
     }
+    self.region_active = false; // EDITING disarms the region paint
     }
 }
 fn main() {
@@ -870,6 +897,7 @@ fn main() {
         group_alive: false,
         touched: false,
         isearch_hi: None,
+        region_active: false,
     };
     loop {
         ed.frame();
@@ -936,7 +964,7 @@ fn main() {
             Cmd::Isearch => ed.isearch(false),
             Cmd::FindBackward => ed.isearch(true),
             Cmd::ScrollPageDown => ed.page_down(),
-            Cmd::Cancel => ed.msg = "Cancelled".to_string(),
+            Cmd::Cancel => ed.cancel(),
             Cmd::Noop => {} // unbound plain byte: SILENT (Doc D §2.3)
             Cmd::SetMark => ed.set_mark(),
             Cmd::BeginningOfLine => ed.beginning_of_line(),
@@ -998,6 +1026,7 @@ mod tests {
             group_alive: false,
             touched: false,
             isearch_hi: None,
+            region_active: false,
         }
     }
 

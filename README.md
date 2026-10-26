@@ -112,15 +112,18 @@ Run the editor from a real terminal:
   merges lines when point sits on the newline). EDITING CLEARS the
   region: insertion (typing, `C-j`/`C-m`/`C-o`, `C-y` paste) and
   backspace move the mark to point; re-arm the region with `C-@`.
-  `C-d` and `C-k` keep the region.
+  `C-d` and `C-k` keep the region. The region PAINT is a transient-mark
+  switch: `C-@` arms it, `C-g` and the editing commands that collapse
+  the mark disarm it (motions then show nothing until the next `C-@`).
 - **Live highlighting** — the ACTIVE window paints two overlays
   (background colors; the text is never touched): the CURRENT isearch
   match gets a yellow background from the moment it matches (it extends
   / moves with every typed char and with the direction switch, and
   stops at accept/C-g/EOF); a marked region gets a cyan background from
   mark to point, repainted on EVERY command - motions extend it live,
-  typing collapses it (the mark follows point, see Regions), and `C-@`
-  with mark == point turns it off. The match paint shows in EVERY
+  typing collapses it (the mark follows point, see Regions), `C-g`
+  DISARMS the paint (motions stay dark until the next `C-@`), and the
+  paint is OFF from the startup frame. The match paint shows in EVERY
   window showing the searching buffer; the region paint is ACTIVE-window
   only, and a displayed match SUPPRESSES the region paint (the match
   owns the highlight, Emacs style); region/match spans cover fullwidth
@@ -237,7 +240,7 @@ Run the editor from a real terminal:
 | Key | Command |
 |-----|---------|
 | printable char | self-insert |
-| `C-g` | cancel current command / echo |
+| `C-g` | cancel current command / echo; it also DEACTIVATES the region (mark := point, cyan paint OFF - motions after a disarm do NOT re-paint; re-arm with `C-@`) |
 | `C-x C-c`, `C-c` | quit; if any buffer has unsaved modifications, first asks `Modified buffers exist; exit anyway? (yes|no)` and only `yes` exits (EOF during key reading exits unconditionally — unsaved changes are lost; EOF in a minibuffer prompt cancels that command) |
 | `C-j` / `C-m` | insert newline at point |
 | `C-b` / `C-f` | backward / forward one char |

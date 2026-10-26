@@ -881,7 +881,12 @@ impl M {
                     None => self.msg = "No change to undo".to_string(),
                 }
             }
-            Op::Cg => self.msg = "Cancelled".to_string(),
+            Op::Cg => {
+                // production cancel(): mark := point (region deactivate)
+                let p = self.bufs[bi].point;
+                self.bufs[bi].mark = p;
+                self.msg = "Cancelled".to_string();
+            }
             Op::Split2 => {
                 self.tree.split(self.active, true);
                 self.msg = "".to_string();
@@ -1215,7 +1220,9 @@ impl M {
             let b = tail[i];
             i += 1;
             if b == 0x07 {
+                // production exit: point AND mark restored (deactivate)
                 self.bufs[bi].point = entry;
+                self.bufs[bi].mark = entry;
                 self.msg = "Cancelled".to_string();
                 return;
             }

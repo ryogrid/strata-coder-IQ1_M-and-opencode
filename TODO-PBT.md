@@ -155,6 +155,12 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 学習記録
 
+- 2026-10-26(region transient-mark 化):「ハイライトが消えない」系の報告は
+  描画に**状態スイッチ**(armed/disarmed)が無いことが原因。mark 値だけでは
+  「C-g で消す」を表現できない(移動で mark!=point が復活する)。 Emacs の
+  mark-active 相当の明示フラグが正。フラグは grid テキスト比較に現れない
+  のでモデルは mark **値**のミラーだけ(C-g の mark:=point が重要=
+  region-edge 移動規則が grid に見える)。
 - 2026-10-26(ハイライト/SGR):属性レイヤは**全面 grid テキスト比較を
   素通りする**(capture-pane -p はテキストのみ)→ P5-P7 模型変更不要、
   ピンは e2e の `-e` capture(expect_e)で行う。ウィンドウ単位の描画状態は
@@ -301,6 +307,19 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
+- 2026-10-26: ユーザー報告 3 点対応=region ハイライトの transient-mark 化
+  (C-@ で ARM、C-g と 型入力は C-o/DEL/yank で DISARM、ARM 解除後の移動で
+  再点灯なし=起動フレームも無描画)。`Ed.region_active` フラグ+
+  `draw_all(region_on)`。C-g は mark:=point も行う(Emacs 式 deactivate、
+  isearch 内 C-g は mark=orig 復元+解除)。モデルは Cg で mark:=point、
+  isearch C-g で mark:=entry(grid はテキストのみ=フラグ不要)。
+  e2e s167 追加=96 シナリオ。ゲート info で C-o も DISARM へ揃えた
+  (README の編集リスト=型入力 C-j/C-m/C-o/C-y/DEL と一致)。
+  「起動時からハイライト」の再現は起動直後の無描画を tmux で確認(0/0)、
+  「C-s が行末まで」はデモで全 Hop の span/カーソルを実測し全て一致範囲
+  (行末マッチが行末に見える報告と解釈)。検証:unit 54、combination
+  P5/P6/P7/P7b 全緑、e2e 96/96、pbt-run 全段緑、release_smoke PASS、
+  コードゲート Approve。
 - 2026-10-26: isearch マッチ+region のリアルタイム背景ハイライト=コミット
   1b42fee(CI 緑)の
   (Style::Isearch=43m 黄/Style::Region=46m 青、screen.rs `apply_span`、

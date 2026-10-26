@@ -165,6 +165,7 @@ pub fn draw_all(
     active: usize,
     msg: String,
     isearch_hi: Option<(usize, usize, usize)>, // (buffer, match start, match len)
+    region_on: bool,                           // transient-mark: paint region ONLY while armed
 ) -> Tree {
     let size = term_size();
     let tty = size.rows > 0 && size.cols > 0;
@@ -267,7 +268,10 @@ pub fn draw_all(
                     if hb == bidx {
                         ish = Some((hs, hs + hl));
                     }
-                } else if leaf_idx == active {
+                } else if leaf_idx == active && region_on {
+                    // paint ONLY while the region is ARMED (C-@ ...
+                    // disarmed by C-g / editing): motions after a disarm
+                    // never re-paint, the startup frame shows nothing.
                     let pt = tree.leaves[leaf_idx].point;
                     let mk = tree.leaves[leaf_idx].mark;
                     if pt != mk {
