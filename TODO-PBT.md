@@ -307,7 +307,8 @@ PBT(Property-Based Testing)で emur を検証する作業の進捗台帳。
 
 ## 変更履歴
 
-- 2026-10-26: ユーザー報告 3 点対応=region ハイライトの transient-mark 化
+- 2026-10-26: ユーザー報告 3 点対応=コミット 5ed8ea5(CI 緑)。
+  region ハイライトの transient-mark 化
   (C-@ で ARM、C-g と 型入力は C-o/DEL/yank で DISARM、ARM 解除後の移動で
   再点灯なし=起動フレームも無描画)。`Ed.region_active` フラグ+
   `draw_all(region_on)`。C-g は mark:=point も行う(Emacs 式 deactivate、
