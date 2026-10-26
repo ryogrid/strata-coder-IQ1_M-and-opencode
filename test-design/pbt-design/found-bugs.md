@@ -244,7 +244,7 @@ only deep runs hit.
 - date: 2026-10-26
 - property: P3 window_walk (tmux_fuzz)
 - severity: ux (test flake: false failure)
-- status: FIXED (test-side; landed with the P5-P7 gate commit)
+- status: FIXED aa5995e (test-side)
 
 Summary: the final-phase assertion `pane.contains("alpha")` fires
 ("text gone") after a legal op sequence in a split tree. The product

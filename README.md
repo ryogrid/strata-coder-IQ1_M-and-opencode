@@ -11,7 +11,7 @@ Repo layout:
 | `src/` | `main.rs` (key dispatch), `buffer.rs` (gap buffer), `window.rs` (window tree), `screen.rs` (rendering), `terminal.rs` (raw I/O), `highlight.rs` (syntax highlighting) |
 | `design/` | design docs + task tracker |
 | `test-design/` | end-to-end test design doc + tmux-driven harness; `pbt-design/` property-test design; `pbt-run.sh` serial PBT entry point |
-| `pbt-test/` | property-based test crate (proptest P0-P4, `#[path]` includes of `src/buffer.rs`) |
+| `pbt-test/` | property-based test crate (proptest P0-P4 `tmux_fuzz` + P5-P7 `combination`: a full-pane grid model rendered from `#[path]` includes of `src/buffer.rs`/`src/window.rs`, diffed row-by-row against `tmux capture-pane`) |
 | `docs/` | dev-environment snapshot, design deep-dives (CJK width, keymap dispatch table) |
 | `review/` | review finding docs (Japanese, task ledgers) |
 
@@ -53,7 +53,7 @@ cargo build              # debug build -> target/debug/emur
 cargo build --release    # optimized build -> target/release/emur
 cargo test               # root unit tests (gap buffer, keymap, window, undo stack)
 bash test-design/e2e.sh  # end-to-end tmux harness (requires tmux)
-bash test-design/pbt-run.sh  # property tests P0-P4 (tmux; serial law - no other tmux suite/cargo build while running)
+bash test-design/pbt-run.sh  # property tests P0-P7 (tmux; serial law - no other tmux suite/cargo build while running)
 ```
 
 Run the editor from a real terminal:
